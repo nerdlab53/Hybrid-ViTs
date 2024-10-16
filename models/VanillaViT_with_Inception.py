@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from inception_modules import InceptionModule
-from dataset_utils.config_alzheimer_dataset import Alzheimer_CFG
+from dataset_utils.config import Alzheimer_CFG
 
 config = Alzheimer_CFG()
 
