@@ -9,6 +9,7 @@ config = Alzheimer_CFG()
 class Attention(nn.Module):
 
     def __init__(self, dim, num_heads=12, dropout=0.1):
+        super().__init__()
         self.heads = num_heads
         self.scale = dim** -0.5
         self.qkv = nn.Linear(dim, dim*3, bias=False)
