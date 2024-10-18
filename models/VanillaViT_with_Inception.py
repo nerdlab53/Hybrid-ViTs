@@ -45,7 +45,7 @@ class TransformerBlock(nn.Module):
             nn.Linear(dim, mlp_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(mlp_dim, dim)
+            nn.Linear(mlp_dim, dim),
             nn.Dropout(dropout)
         )
     
