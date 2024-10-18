@@ -58,7 +58,15 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
     '''VanillaViT with Modified Inception Module backbone
     '''
 
-    def __init__(self, num_classes=config.num_classes, dim=768, depth=12, heads=12, mlp_dim=3072, dropout=0.1):
+    def __init__(
+            self,
+            num_classes=config.num_classes,
+            dim=768,
+            depth=12,
+            heads=12,
+            mlp_dim=3072,
+            dropout=0.1
+    ):
         super(VanillaViT_with_ModifiedInceptionModule, self).__init__()
         self.inception = ModifiedInceptionModule(in_channels=3)
         self.flatten = nn.Flatten(start_dim=1)
@@ -84,4 +92,4 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
         return x
 
     def get_attention_weigths(self):
-        return self.attn_weights
+        return self.attn_weigh

@@ -61,7 +61,15 @@ class VanillaViT_with_Inception(nn.Module):
     '''VanillaViT with InceptionModule backbone
     '''
 
-    def __init__(self, num_classes=config.num_classes, dim=768, depth=12, heads=12, mlp_dim=3072, dropout=0.1):
+    def __init__(
+            self,
+            num_classes=config.num_classes,
+            dim=768,
+            depth=12,
+            heads=12,
+            mlp_dim=3072,
+            dropout=0.1
+    ):
         super(VanillaViT_with_Inception, self).__init__()
         self.inception = InceptionModule(in_channels=3)
         self.flatten = nn.Flatten(start_dim=1)
