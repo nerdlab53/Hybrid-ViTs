@@ -124,10 +124,12 @@ def valid(args, model, writer, test_loader, global_step):
 
 def train(args, model):
     """Training"""
-    if args.local_rank in [-1, 0]:
-        os.makedirs(args.output_dir, exist_ok=True)
-        writer = SummaryWriter(log_dir=os.path.join("logs", args.name))
     
+    model_name = args.model_type
+    eval_dir = os.path.join(args.output_dir, "eval", model_name)
+    os.makedirs(eval_dir, exist_ok=True)
+    writer = SummaryWriter(log_dir=eval_dir)
+
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
     
     transform_train = transforms.Compose([
@@ -177,12 +179,17 @@ def train(args, model):
     losses = AverageMeter()
 
     global_step, best_acc = 0, 0
+    train_losses = []
+    train_accuracies = []
+    val_losses = []
+    val_accuracies = []
 
+    
     while True:
         model.train()
         epoch_iterator = tqdm(
             train_loader,
-            desc="Training (X / X Steps) (loss=X.X)",
+            desc=f"Training {model_name} (X / X Steps) (loss=X.X)",
             bar_format="{l_bar}{r_bar}",
             dynamic_ncols=True
         )
@@ -204,28 +211,44 @@ def train(args, model):
                 global_step += 1
 
                 epoch_iterator.set_description(
-                    Training (%d / %d Steps) (loss=%2.5f)" % (global_step, t_total, losses.val)
+                    f"Training {model_name} ({global_step} / {t_total} steps) (loss={losses.val:.5f})"
                 )
-                if args.local_rank in [-1, 0]:
-                    writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
-                    writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
+
+                writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
+                writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
+
+                training_losses.append((global_step, losses.val))
+
                 if global_step % args.eval_every == 0:
-                    accuracy = valid(args, model, writer, test_loader, global_step)
+                    accuracy, val_loss = valid(args, model, writer, test_loader, global_step)
                     if best_acc < accuracy:
                         save_model(args, model, global_step)
                         best_acc = accuracy
                     model.train()
 
+                    train_accuracies.append((global_step, accuracy))
+                    val_losses.append((global_step, val_loss))
+                    val_accuracies.append((global_step, accuracy))
+
                 if global_step % t_total == 0:
                     break
+        
         losses.reset()
+        
         if global_step % t_total == 0:
             break
 
-    if args.local_rank in [-1, 0]:
-        writer.close()
-    logger.info("Best Accuracy: \t%f" % best_acc)
-    logger.info("End Training!")
+    writer.close()
+    logger.info(f"Best Accuracy for {model_name}: \t%f" % best_acc)
+    
+    np.save(os.path.join(eval_dir, "train_losses.npy"), np.array(train_losses))
+    np.save(os.path.join(eval_dir, "train_accuracies.npy"), np.array(train_accuracies))
+    np.save(os.path.join(eval_dir, "val_accuracies.npy"), np.array(val_accuracies))
+    np.save(os.path.join(eval_dir, "val_losses.npy"), np.array(val_losses))
+
+    logger.info(f"End Training for {model_name}")
+
+    return best_acc
 
 def main():
   parser = argparse.ArgumentParser()
