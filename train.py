@@ -1,17 +1,14 @@
 import argparse
-import os 
+import logging
+import os
 import random
-import numpy as np 
-from datetime import timedelta
-
+import numpy as np
 import torch
-import torch.distributed as td
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
-
-from tqdm import tqdm 
-
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+from datetime import timedelta
 from models.VanillaViT import VanillaViT
 from models.VanillaViT_with_Inception import VanillaViT_with_Inception
 from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInception
@@ -19,7 +16,7 @@ from utils.scheduler import WarmupCosineScheduler
 
 logger = logging.getLogger(__name__)
 
-class AverageMeter(Object):
+class AverageMeter(object):
     """
     Computes and stores the average and current value
     """
@@ -71,15 +68,14 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 def valid(args, model, writer, test_loader, global_step):
-    eval_loss = AverageMeter()
-
+    # Validation!
+    eval_losses = AverageMeter()
 
     logger.info("***** Running Validation *****")
     logger.info("  Num steps = %d", len(test_loader))
     logger.info("  Batch size = %d", args.eval_batch_size)
 
     model.eval()
-
     all_preds, all_labels = [], []
     epoch_iterator = tqdm(
         test_loader,
@@ -111,7 +107,7 @@ def valid(args, model, writer, test_loader, global_step):
             )
         epoch_iterator.set_description("Validation... (loss=%2.5f)" % eval_losses.val)
 
-    all_preds, all_labels = all_preds[0], all_lables[0]
+    all_preds, all_labels = all_preds[0], all_labels[0]
     accuracy = simple_accuracy(all_preds, all_labels)
     logger.info("\n")
     logger.info("Validation Results")
@@ -120,7 +116,8 @@ def valid(args, model, writer, test_loader, global_step):
     logger.info("Valid Accuracy: %2.5f" % accuracy)
 
     writer.add_scalar("test/accuracy", scalar_value=accuracy, global_step=global_step)
-    return accuracy
+    writer.add_scalar("test/loss", scalar_value=eval_losses.avg, global_step=global_step)
+    return accuracy, eval_losses.avg
 
 def train(args, model):
     """Training"""
@@ -164,7 +161,7 @@ def train(args, model):
                                 weight_decay=args.weight_decay)
     t_total = args.num_steps
     
-    scheduler = WarmupCosineSchedule(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
+    scheduler = WarmupCosineScheduler(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
 
     logger.info("***** Running training *****")
     logger.info("  Total optimization steps = %d", args.num_steps)
@@ -217,7 +214,7 @@ def train(args, model):
                 writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
                 writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
 
-                training_losses.append((global_step, losses.val))
+                train_losses.append((global_step, losses.val))
 
                 if global_step % args.eval_every == 0:
                     accuracy, val_loss = valid(args, model, writer, test_loader, global_step)
@@ -225,7 +222,7 @@ def train(args, model):
                         save_model(args, model, global_step)
                         best_acc = accuracy
                     model.train()
-
+                    
                     train_accuracies.append((global_step, accuracy))
                     val_losses.append((global_step, val_loss))
                     val_accuracies.append((global_step, accuracy))
@@ -251,7 +248,7 @@ def train(args, model):
     return best_acc
 
 def main():
-  parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
     parser.add_argument("--dataset", choices=["cifar10", "cifar100"], default="cifar10", help="Which downstream task.")
@@ -282,10 +279,10 @@ def main():
     else:
         torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
-        torch.distributed.init_proccess_group(backend='nccl', timedelta=timeout(minutes=60))
+        torch.distributed.init_proccess_group(backend='nccl', timeout=timedelta(minutes=60))
         args.n_gpu = 1
     args.device = device
-    ogging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
                         datefmt='%m/%d/%Y %H:%M:%S',
                         level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
     logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s" %
