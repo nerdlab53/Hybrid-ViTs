@@ -228,5 +228,49 @@ def train(args, model):
     logger.info("End Training!")
 
 def main():
-    # Implement train.py further
-    pass
+  parser = argparse.ArgumentParser()
+    # Required parameters
+    parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100"], default="cifar10", help="Which downstream task.")
+    parser.add_argument("--model_type", choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception"],
+                        default="VanillaViT", help="Which model to use.")
+    parser.add_argument("--output_dir", default="output", type=str, help="The output directory where checkpoints will be written.")
+
+    parser.add_argument("--img_size", default=224, type=int, help="Resolution size")
+    parser.add_argument("--train_batch_size", default=512, type=int, help="Total batch size for training.")
+    parser.add_argument("--eval_batch_size", default=64, type=int, help="Total batch size for eval.")
+    parser.add_argument("--eval_every", default=100, type=int, help="Run prediction on validation set every so many steps.")
+
+    parser.add_argument("--learning_rate", default=3e-2, type=float, help="The initial learning rate for SGD.")
+    parser.add_argument("--weight_decay", default=0, type=float, help="Weight deay if we apply some.")
+    parser.add_argument("--num_steps", default=10000, type=int, help="Total number of training epochs to perform.")
+    parser.add_argument("--warmup_steps", default=500, type=int, help="Step of training to perform learning rate warmup for.")
+    parser.add_argument("--max_grad_norm", default=1.0, type=float, help="Max gradient norm.")
+
+    parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
+    parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
+    parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
+    
+    args = parser.parse_args()
+
+    if args.local_rank == -1:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        args.n_gpu = torch.cuda.device_count()
+    else:
+        torch.cuda.set_device(args.local_rank)
+        device = torch.device("cuda", args.local_rank)
+        torch.distributed.init_proccess_group(backend='nccl', timedelta=timeout(minutes=60))
+        args.n_gpu = 1
+    args.device = device
+    ogging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+                        datefmt='%m/%d/%Y %H:%M:%S',
+                        level=logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+    logger.warning("Process rank: %s, device: %s, n_gpu: %s, distributed training: %s" %
+                   (args.local_rank, args.device, args.n_gpu, bool(args.local_rank != -1)))
+
+    set_seed(args)
+    args, model = setup(args)
+    train(args, model)
+
+if __name__ == "__main__":
+    main()
