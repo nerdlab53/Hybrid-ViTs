@@ -12,6 +12,10 @@ from datetime import timedelta
 from models.VanillaViT import VanillaViT
 from models.VanillaViT_with_Inception import VanillaViT_with_Inception
 from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInception
+from models.densenet import DenseNet_for_Alzheimer
+from models.efficientnet import EfficientNet_for_Alzheimer
+from models.vgg import VGG_for_Alzheimer
+from models.mobilenet import MobileNet_for_Alzheimer
 from utils.scheduler import WarmupCosineScheduler
 
 logger = logging.getLogger(__name__)
@@ -53,11 +57,9 @@ def setup(args):
         model = VanillaViT_with_ModifiedInception(num_classes=args.num_classes)
     else:
         raise ValueError(f"Unkown model type : {args.model_type}")
-
     model.to(args.device)
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info("Total Parameters : \t%2.1fM" % (num_params / 1000000))
-
     return args, model
 
 def set_seed(args):
@@ -252,7 +254,7 @@ def main():
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
     parser.add_argument("--dataset", choices=["cifar10", "cifar100"], default="cifar10", help="Which downstream task.")
-    parser.add_argument("--model_type", choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception"],
+    parser.add_argument("--model_type", choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception", "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2"],
                         default="VanillaViT", help="Which model to use.")
     parser.add_argument("--output_dir", default="output", type=str, help="The output directory where checkpoints will be written.")
 
@@ -294,3 +296,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

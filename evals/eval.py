@@ -5,7 +5,13 @@ from models.VanillaViT_with_Inception import VanillaViT_with_Inception
 from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInceptionModule
 from models.VanillaViT import VanillaViT
 from models.resnet import ResNet50_for_Alzheimer
+from models.densenet import DenseNet_for_Alzheimer
+from models.efficientnet import EfficientNet_for_Alzheimer
+from models.vgg import VGG_for_Alzheimer
+from models.mobilenet import MobileNet_for_Alzheimer
 from utils.data_loader import load_data
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def evaluate_model(model, data_loader):
     model.eval()
@@ -38,11 +44,16 @@ def main():
         "VanillaViT_with_Inception": VanillaViT_with_Inception(),
         "VanillaViT_with_ModifiedInception": VanillaViT_with_ModifiedInceptionModule(),
         "VanillaViT": VanillaViT(),
-        "ResNet50_for_Alzheimer": ResNet50_for_Alzheimer()
+        "ResNet50": ResNet50_for_Alzheimer(),
+        "DenseNet121": DenseNet_for_Alzheimer(),
+        "EfficientNet-B0": EfficientNet_for_Alzheimer(),
+        "VGG16_BN": VGG_for_Alzheimer(),
+        "MobileNetV2": MobileNet_for_Alzheimer()
     }
 
     results = []
     for name, model in models.items():
+        model = model.to(device)  # Add device handling
         top1_accuracy, top5_accuracy = evaluate_model(model, data_loader)
         results.append([name, top1_accuracy, top5_accuracy])
         print(f"{name} - Top-1 Accuracy: {top1_accuracy:.2f}%, Top-5 Accuracy: {top5_accuracy:.2f}%")
