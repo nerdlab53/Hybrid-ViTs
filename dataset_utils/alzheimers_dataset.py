@@ -12,22 +12,17 @@ from pathlib import Path
 
 class AlzheimersDataset(Dataset):
 
-    def __init__(
-        self,
-        root_dir : str,
-        transform : Optional[transforms.compose] : None,
-        image_size : Tuple[int, int] : (224, 224)
-    ):
+    def __init__(self, root_dir : str, transform : Optional[transforms.compose] = None, image_size : Tuple[int, int] = (224, 224)):
         self.root_dir = root_dir
         self.transform = transform
         self.image_size = image_size
 
-        self.classes = sorted([d for d in os.listdir(root_dir)
-        if os.path.isdir(os.path.join(root_dir, d)])
+        self.classes = sorted([d for d in os.listdir(root_dir) 
+                             if os.path.isdir(os.path.join(root_dir, d))])
 
         self.class_to_idx = {cls_name : i for i, cls_name in enumerate(self.classes)}
         
-        self.images: List[Tuple[str, int] = []
+        self.images: List[Tuple[str, int]] = []
         self._load_dataset()
         # Default Transform if None is specified
         if self.transform is None:
@@ -46,7 +41,7 @@ class AlzheimersDataset(Dataset):
             class_idx = self.class_to_idx[class_name]
             class_dir = self.root_dir / class_name
 
-            for img_path in class_dir.glob(*):
+            for img_path in class_dir.glob('*'):
                 if img_path.suffix.lower() in valid_extensions:
                     self.images.append((str(img_path), class_idx))
 
