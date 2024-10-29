@@ -383,6 +383,8 @@ def main():
                        help="Number of transformer layers")
     parser.add_argument("--num_heads", type=int, default=12,
                        help="Number of attention heads")
+    parser.add_argument("--val_split", type=float, default=0.1,
+                       help="Fraction of training data to use for validation")
     
     # Existing arguments
     parser.add_argument("--name", required=True,
