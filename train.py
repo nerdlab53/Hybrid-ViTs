@@ -19,8 +19,10 @@ from models.vgg import VGG_for_Alzheimer
 from models.mobilenet import MobileNet_for_Alzheimer
 from models.resnet import ResNet50_for_Alzheimer
 from utils.scheduler import WarmupCosineScheduler
+from utils.checkpoints import save_checkpoint
 from dataset_utils.alzheimers_dataset import AlzheimersDataset
 from utils.data_loader import load_alzheimers_data
+from utils.metrics_logger import MetricsLogger
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +198,6 @@ def train(args, model):
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
 
-    
     if args.dataset == "cifar10":
         trainset = datasets.CIFAR10(root="./data", train=True, download=True, transform=transform_train)
         testset = datasets.CIFAR10(root="./data", train=False, download=True, transform=transform_test)
@@ -204,20 +205,28 @@ def train(args, model):
         trainset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform_train)
         testset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform_test)
     elif args.dataset == "alzheimers":
-        train_loader, test_loader = load_alzheimers_data(
-            args.data_dir, 
-            args.train_batch_size,
+        train_loader, val_loader, test_loader = load_alzheimers_data(
+            args.data_dir,
+            batch_size=args.train_batch_size,
             dataset_type=args.dataset_type
         )
 
-    
-    optimizer = get_optimizer(args, model)
-    t_total = args.num_steps
-    
-    scheduler = WarmupCosineScheduler(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
-    scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
     criterion = nn.CrossEntropyLoss()
-
+    optimizer = get_optimizer(args, model)
+    scheduler = WarmupCosineScheduler(
+        optimizer,
+        warmup_steps=args.warmup_steps,
+        t_total=args.num_steps
+    )
+    
+    # Initialize metrics
+    train_losses = AverageMeter()
+    train_acc = AverageMeter()
+    best_val_acc = 0.0
+    
+    # Initialize metrics logger
+    metrics_logger = MetricsLogger(args.output_dir, args.model_type)
+    
     logger.info("***** Running training *****")
     logger.info("  Total optimization steps = %d", args.num_steps)
     logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size)
@@ -228,25 +237,16 @@ def train(args, model):
 
     model.zero_grad()
     set_seed(args)
-    losses = AverageMeter()
-
-    global_step, best_acc = 0, 0
-    train_losses = []
-    train_accuracies = []
-    val_losses = []
-    val_accuracies = []
-
+    scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
     
-    while True:
-        model.train()
-        epoch_iterator = tqdm(
-            train_loader,
-            desc=f"Training {model_name} (X / X Steps) (loss=X.X)",
-            bar_format="{l_bar}{r_bar}",
-            dynamic_ncols=True
-        )
-
-        for step, (images, labels) in enumerate(train_loader):
+    # Training loop
+    model.train()
+    for epoch in range(args.num_epochs):
+        train_losses.reset()
+        train_acc.reset()
+        
+        pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.num_epochs}')
+        for step, (images, labels) in enumerate(pbar):
             images = images.to(args.device, non_blocking=True)
             labels = labels.to(args.device, non_blocking=True)
             
@@ -254,7 +254,7 @@ def train(args, model):
             if step % 10 == 0:
                 torch.cuda.empty_cache()
             
-            # Use mixed precision training if requested
+            # Forward pass with mixed precision
             if args.fp16:
                 with torch.cuda.amp.autocast():
                     outputs = model(images)
@@ -263,15 +263,15 @@ def train(args, model):
                 outputs = model(images)
                 loss = criterion(outputs, labels)
             
+            # Backward pass
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
-            
-            # Backward pass with mixed precision handling
+                
             if args.fp16:
                 scaler.scale(loss).backward()
             else:
                 loss.backward()
-
+            
             if (step + 1) % args.gradient_accumulation_steps == 0:
                 if args.fp16:
                     scaler.unscale_(optimizer)
@@ -284,47 +284,85 @@ def train(args, model):
                 
                 optimizer.zero_grad()
                 scheduler.step()
-                global_step += 1
-
-                epoch_iterator.set_description(
-                    f"Training {model_name} ({global_step} / {t_total} steps) (loss={losses.val:.5f})"
-                )
-
-                writer.add_scalar("train/loss", scalar_value=losses.val, global_step=global_step)
-                writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=global_step)
-
-                train_losses.append((global_step, losses.val))
-
-                if global_step % args.eval_every == 0:
-                    accuracy, val_loss = valid(args, model, writer, test_loader, global_step)
-                    if best_acc < accuracy:
-                        save_model(args, model, global_step)
-                        best_acc = accuracy
-                    model.train()
-                    
-                    train_accuracies.append((global_step, accuracy))
-                    val_losses.append((global_step, val_loss))
-                    val_accuracies.append((global_step, accuracy))
-
-                if global_step % t_total == 0:
-                    break
+                
+                # Update metrics
+                _, predicted = torch.max(outputs.data, 1)
+                accuracy = (predicted == labels).float().mean()
+                train_losses.update(loss.item())
+                train_acc.update(accuracy.item())
+                
+                # Update progress bar
+                pbar.set_postfix({
+                    'loss': f'{train_losses.avg:.4f}',
+                    'acc': f'{train_acc.avg:.4f}'
+                })
+                
+                writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
+                writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=step)
+                writer.add_scalar("train/accuracy", scalar_value=train_acc.avg, global_step=step)
         
-        losses.reset()
+        # Validation phase
+        val_loss, val_acc = validate(args, model, val_loader, criterion)
         
-        if global_step % t_total == 0:
-            break
+        # Log metrics
+        metrics_logger.update(
+            epoch=epoch,
+            train_loss=train_losses.avg,
+            train_acc=train_acc.avg,
+            val_loss=val_loss,
+            val_acc=val_acc
+        )
+        
+        # Save metrics after each epoch
+        metrics_logger.save()
+        
+        writer.add_scalar("val/loss", scalar_value=val_loss, global_step=epoch)
+        writer.add_scalar("val/accuracy", scalar_value=val_acc, global_step=epoch)
+        
+        # Save best model
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'best_val_acc': best_val_acc,
+                'optimizer': optimizer.state_dict(),
+            }, args.output_dir)
+        
+        # Log to console
+        logger.info(f'Epoch {epoch+1}: '
+                   f'Train Loss={train_losses.avg:.4f}, '
+                   f'Train Acc={train_acc.avg:.4f}, '
+                   f'Val Loss={val_loss:.4f}, '
+                   f'Val Acc={val_acc:.4f}')
 
     writer.close()
-    logger.info(f"Best Accuracy for {model_name}: \t%f" % best_acc)
-    
-    np.save(os.path.join(eval_dir, "train_losses.npy"), np.array(train_losses))
-    np.save(os.path.join(eval_dir, "train_accuracies.npy"), np.array(train_accuracies))
-    np.save(os.path.join(eval_dir, "val_accuracies.npy"), np.array(val_accuracies))
-    np.save(os.path.join(eval_dir, "val_losses.npy"), np.array(val_losses))
-
+    logger.info(f"Best Accuracy for {model_name}: \t%f" % best_val_acc)
     logger.info(f"End Training for {model_name}")
 
-    return best_acc
+    return best_val_acc
+
+def validate(args, model, val_loader, criterion):
+    model.eval()
+    val_losses = AverageMeter()
+    val_acc = AverageMeter()
+    
+    with torch.no_grad():
+        for images, labels in val_loader:
+            images = images.to(args.device)
+            labels = labels.to(args.device)
+            
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            
+            _, predicted = torch.max(outputs.data, 1)
+            accuracy = (predicted == labels).float().mean()
+            
+            val_losses.update(loss.item())
+            val_acc.update(accuracy.item())
+    
+    model.train()
+    return val_losses.avg, val_acc.avg
 
 def main():
     parser = argparse.ArgumentParser()
@@ -377,6 +415,10 @@ def main():
     parser.add_argument('--gradient_accumulation_steps', default=4, type=int, help="Number of updates steps to accumulate before backward.")
     parser.add_argument("--data_dir", default="./data/alzheimers", type=str, help="Path to the dataset directory")
     parser.add_argument("--fp16", action="store_true", help="Whether to use 16-bit mixed precision.")
+
+    parser.add_argument("--num_epochs", type=int, default=100)
+    parser.add_argument("--save_steps", type=int, default=100)
+    parser.add_argument("--logging_steps", type=int, default=10)
 
     args = parser.parse_args()
 
