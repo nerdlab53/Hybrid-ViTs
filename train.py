@@ -4,6 +4,7 @@ import os
 import random
 import numpy as np
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torch.utils.tensorboard import SummaryWriter
@@ -243,12 +244,16 @@ def train(args, model):
             dynamic_ncols=True
         )
 
-        for step, (x, y) in enumerate(epoch_iterator):
-            x, y = x.to(args.device), y.to(args.device)
-            loss = model(x, y)
-
+        for step, (images, labels) in enumerate(train_loader):
+            images, labels = images.to(args.device), labels.to(args.device)
+            
+            # Forward pass
+            outputs = model(images)
+            loss = nn.CrossEntropyLoss()(outputs, labels)
+            
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
+            
             loss.backward()
 
             if (step + 1) % args.gradient_accumulation_steps == 0:
