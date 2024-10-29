@@ -32,7 +32,8 @@ def load_alzheimers_data(data_dir, batch_size=32, num_workers=4, dataset_type="O
     train_dataset = AlzheimersDataset(
         root_dir=data_dir,
         dataset_type=dataset_type,
-        transform=transform_train
+        transform=transform_train,
+        split='train'
     )
     
     # Calculate split sizes
@@ -44,18 +45,23 @@ def load_alzheimers_data(data_dir, batch_size=32, num_workers=4, dataset_type="O
     train_dataset, val_dataset = torch.utils.data.random_split(
         train_dataset, 
         [train_size, val_size],
-        generator=torch.Generator().manual_seed(42)  # For reproducibility
+        generator=torch.Generator().manual_seed(42)
     )
     
-    # Override transform for validation set
-    val_dataset.dataset.transform = transform_test
+    # Create a new validation dataset with test transforms
+    val_dataset = AlzheimersDataset(
+        root_dir=data_dir,
+        dataset_type=dataset_type,
+        transform=transform_test,
+        split='train'  # Still using train split, but different subset
+    )
     
     # Load test dataset
     test_dataset = AlzheimersDataset(
         root_dir=data_dir,
         dataset_type=dataset_type,
         transform=transform_test,
-        train=False
+        split='test'
     )
     
     # Create data loaders

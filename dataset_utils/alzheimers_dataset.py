@@ -13,24 +13,27 @@ from pathlib import Path
 class AlzheimersDataset(Dataset):
 
     def __init__(self, root_dir: str, dataset_type: str = "Original", transform: Optional[transforms.Compose] = None, 
-                 image_size: Tuple[int, int] = (224, 224)):
+                 image_size: Tuple[int, int] = (224, 224), split='train'):
         self.root_dir = Path(root_dir)
         self.transform = transform
         self.image_size = image_size
         self.dataset_type = dataset_type
+        self.split = split
         
-        # Select dataset folder based on type
-        if dataset_type == "Original":
-            self.data_dir = self.root_dir / "OriginalDataset"
-        else:
-            self.data_dir = self.root_dir / "AugmentedAlzheimerDataset"
+        # Adjust the path based on split
+        data_path = os.path.join(root_dir, dataset_type, 'train' if split == 'train' else 'test')
         
-        self.classes = sorted([d for d in os.listdir(self.data_dir) 
-                             if os.path.isdir(os.path.join(self.data_dir, d))])
+        # Get all image paths and labels
+        self.image_paths = []
+        self.labels = []
         
-        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
-        self.images: List[Tuple[str, int]] = []
-        self._load_dataset()
+        for class_idx, class_name in enumerate(sorted(os.listdir(data_path))):
+            class_path = os.path.join(data_path, class_name)
+            if os.path.isdir(class_path):
+                for img_name in os.listdir(class_path):
+                    if img_name.endswith(('.jpg', '.jpeg', '.png')):
+                        self.image_paths.append(os.path.join(class_path, img_name))
+                        self.labels.append(class_idx)
         
         # Default Transform if None is specified
         if self.transform is None:
@@ -41,24 +44,12 @@ class AlzheimersDataset(Dataset):
                                   std=[0.229, 0.224, 0.225])
             ])
     
-    def _load_dataset(self):
-
-        valid_extensions = {'.jpg', '.jpeg', '.png', '.bmp'}
-
-        for class_name in self.classes:
-            class_idx = self.class_to_idx[class_name]
-            class_dir = self.data_dir / class_name
-
-            for img_path in class_dir.glob('*'):
-                if img_path.suffix.lower() in valid_extensions:
-                    self.images.append((str(img_path), class_idx))
-
     def __len__(self) -> int:
-        return len(self.images)
+        return len(self.image_paths)
 
     def __getitem__(self, idx : int) -> Tuple[torch.Tensor, int]:
         
-        img_path, label = self.images[idx]
+        img_path = self.image_paths[idx]
 
         try:
             image = Image.open(img_path).convert('RGB')
@@ -69,16 +60,16 @@ class AlzheimersDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image, label
+        return image, self.labels[idx]
     
     def get_class_names(self) -> List[str]:
-        return self.classes
+        return sorted(os.listdir(self.root_dir))
     
     def get_num_classes(self) -> int:
-        return len(self.classes)
+        return len(sorted(os.listdir(self.root_dir)))
     
     def get_sample_distribution(self) -> dict:
-        dist = {cls:0 for cls in self.classes}
-        for _, label in self.images:
-            dist[self.classes[label]] += 1
+        dist = {cls:0 for cls in sorted(os.listdir(self.root_dir))}
+        for _, label in self.labels:
+            dist[sorted(os.listdir(self.root_dir))[label]] += 1
         return dist

@@ -208,7 +208,8 @@ def train(args, model):
         train_loader, val_loader, test_loader = load_alzheimers_data(
             args.data_dir,
             batch_size=args.train_batch_size,
-            dataset_type=args.dataset_type
+            dataset_type=args.dataset_type,
+            val_split=args.val_split
         )
 
     criterion = nn.CrossEntropyLoss()
