@@ -53,7 +53,7 @@ def main():
     if args.dataset == "alzheimers":
         train_loader, test_loader = load_alzheimers_data(args.data_dir, args.batch_size)
     else:
-        # Existing CIFAR loading logic
+        
         pass
     
     models = {
