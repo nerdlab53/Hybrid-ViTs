@@ -58,28 +58,48 @@ def save_model(args, model, global_step):
     logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
 
 def setup(args):
-    if args.model_type == 'VanillaViT':
-        model = VanillaViT(num_classes=args.num_classes)
-    elif args.model_type == 'VanillaViT_with_Inception':
+    # Set num_classes based on dataset if not specified
+    if not hasattr(args, 'num_classes'):
+        if args.dataset == "cifar10":
+            args.num_classes = 10
+        elif args.dataset == "cifar100":
+            args.num_classes = 100
+        elif args.dataset == "alzheimers":
+            args.num_classes = 4  # Based on the Alzheimer's dataset classes
+        else:
+            raise ValueError(f"Unknown dataset: {args.dataset}")
+    
+    if args.model_type == "VanillaViT":
+        model = VanillaViT(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            embeddingdim=args.embeddingdim,
+            num_heads=args.num_heads,
+            mlp_size=args.mlp_size,
+            num_transformer_layer=args.num_transformer_layer,
+            num_classes=args.num_classes
+        )
+    elif args.model_type == "VanillaViT_with_Inception":
         model = VanillaViT_with_Inception(num_classes=args.num_classes)
-    elif args.model_type == 'VanillaViT_with_ModifiedInception':
+    elif args.model_type == "VanillaViT_with_ModifiedInception":
         model = VanillaViT_with_ModifiedInceptionModule(num_classes=args.num_classes)
-    elif args.model_type == 'DenseNet121':
+    elif args.model_type == "DenseNet121":
         model = DenseNet_for_Alzheimer(num_classes=args.num_classes)
-    elif args.model_type == 'EfficientNet':
+    elif args.model_type == "EfficientNet":
         model = EfficientNet_for_Alzheimer(num_classes=args.num_classes)
-    elif args.model_type == 'VGG16':
+    elif args.model_type == "VGG16":
         model = VGG_for_Alzheimer(num_classes=args.num_classes)
-    elif args.model_type == 'MobileNetV2':
+    elif args.model_type == "MobileNetV2":
         model = MobileNet_for_Alzheimer(num_classes=args.num_classes)
-    elif args.model_type == 'ResNet50':
+    elif args.model_type == "ResNet50":
         model = ResNet50_for_Alzheimer(num_classes=args.num_classes)
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
         
     model.to(args.device)
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info("Total Parameters: \t%2.1fM" % (num_params / 1000000))
+    logger.info(f"Total Parameters: \t{num_params:,}")
     return args, model
 
 def set_seed(args):
@@ -281,17 +301,40 @@ def train(args, model):
 
 def main():
     parser = argparse.ArgumentParser()
-    # Required parameters
-    parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"], default="cifar10", help="Which downstream task.")
+    # Add these arguments before the existing ones
+    parser.add_argument("--num_classes", type=int, default=4,
+                       help="Number of classes in the dataset")
+    parser.add_argument("--img_size", type=int, default=224,
+                       help="Input image size")
+    parser.add_argument("--num_channels", type=int, default=3,
+                       help="Number of input channels")
+    parser.add_argument("--patch_size", type=int, default=16,
+                       help="Size of image patches")
+    parser.add_argument("--embeddingdim", type=int, default=768,
+                       help="Embedding dimension")
+    parser.add_argument("--mlp_size", type=int, default=3072,
+                       help="MLP hidden dimension")
+    parser.add_argument("--num_transformer_layer", type=int, default=12,
+                       help="Number of transformer layers")
+    parser.add_argument("--num_heads", type=int, default=12,
+                       help="Number of attention heads")
+    
+    # Existing arguments
+    parser.add_argument("--name", required=True,
+                       help="Name of this run. Used for monitoring.")
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"],
+                       default="alzheimers", help="Which downstream task.")
     parser.add_argument("--model_type", 
-        choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception",
-                "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2", "ResNet50"],
-        default="VanillaViT", 
-        help="Which model to use.")
-    parser.add_argument("--output_dir", default="output", type=str, help="The output directory where checkpoints will be written.")
+                       choices=["VanillaViT", "VanillaViT_with_Inception", 
+                               "VanillaViT_with_ModifiedInception", "ResNet50",
+                               "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2"],
+                       default="VanillaViT",
+                       help="Which model architecture to use")
+    parser.add_argument("--output_dir", default="output", type=str,
+                       help="The output directory where checkpoints will be written.")
+    parser.add_argument("--dataset_type", choices=["Original", "Augmented"],
+                       default="Original", help="Which dataset type to use")
 
-    parser.add_argument("--img_size", default=224, type=int, help="Resolution size")
     parser.add_argument("--train_batch_size", default=512, type=int, help="Total batch size for training.")
     parser.add_argument("--eval_batch_size", default=64, type=int, help="Total batch size for eval.")
     parser.add_argument("--eval_every", default=100, type=int, help="Run prediction on validation set every so many steps.")
@@ -306,9 +349,7 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
     parser.add_argument("--data_dir", default="./data/alzheimers", type=str, help="Path to the dataset directory")
-    parser.add_argument("--dataset_type", choices=["Original", "Augmented"], 
-                       default="Original", help="Which dataset type to use")
-    
+
     args = parser.parse_args()
 
     if args.local_rank == -1:

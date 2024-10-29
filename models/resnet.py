@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torchvision import models
-from dataset_utils import ALzheimer_CFG
+from dataset_utils.config import Alzheimer_CFG
 
-config = ALzheimer_CFG()
+config = Alzheimer_CFG()
 
 class ResNet50_for_Alzheimer(nn.Module):
 
