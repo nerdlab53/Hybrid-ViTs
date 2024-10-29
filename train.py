@@ -215,6 +215,8 @@ def train(args, model):
     t_total = args.num_steps
     
     scheduler = WarmupCosineScheduler(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
+    scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
+    criterion = nn.CrossEntropyLoss()
 
     logger.info("***** Running training *****")
     logger.info("  Total optimization steps = %d", args.num_steps)
@@ -245,23 +247,43 @@ def train(args, model):
         )
 
         for step, (images, labels) in enumerate(train_loader):
-            images, labels = images.to(args.device), labels.to(args.device)
+            images = images.to(args.device, non_blocking=True)
+            labels = labels.to(args.device, non_blocking=True)
             
-            # Forward pass
-            outputs = model(images)
-            loss = nn.CrossEntropyLoss()(outputs, labels)
+            # Clear memory cache periodically
+            if step % 10 == 0:
+                torch.cuda.empty_cache()
+            
+            # Use mixed precision training if requested
+            if args.fp16:
+                with torch.cuda.amp.autocast():
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
+            else:
+                outputs = model(images)
+                loss = criterion(outputs, labels)
             
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
             
-            loss.backward()
+            # Backward pass with mixed precision handling
+            if args.fp16:
+                scaler.scale(loss).backward()
+            else:
+                loss.backward()
 
             if (step + 1) % args.gradient_accumulation_steps == 0:
-                losses.update(loss.item()*args.gradient_accumulation_steps)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                scheduler.step()
-                optimizer.step()
+                if args.fp16:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    optimizer.step()
+                
                 optimizer.zero_grad()
+                scheduler.step()
                 global_step += 1
 
                 epoch_iterator.set_description(
@@ -340,8 +362,8 @@ def main():
     parser.add_argument("--dataset_type", choices=["Original", "Augmented"],
                        default="Original", help="Which dataset type to use")
 
-    parser.add_argument("--train_batch_size", default=512, type=int, help="Total batch size for training.")
-    parser.add_argument("--eval_batch_size", default=64, type=int, help="Total batch size for eval.")
+    parser.add_argument("--train_batch_size", default=32, type=int, help="Total batch size for training.")
+    parser.add_argument("--eval_batch_size", default=16, type=int, help="Total batch size for eval.")
     parser.add_argument("--eval_every", default=100, type=int, help="Run prediction on validation set every so many steps.")
 
     parser.add_argument("--learning_rate", default=3e-2, type=float, help="The initial learning rate for SGD.")
@@ -352,8 +374,9 @@ def main():
 
     parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
     parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
-    parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
+    parser.add_argument('--gradient_accumulation_steps', default=4, type=int, help="Number of updates steps to accumulate before backward.")
     parser.add_argument("--data_dir", default="./data/alzheimers", type=str, help="Path to the dataset directory")
+    parser.add_argument("--fp16", action="store_true", help="Whether to use 16-bit mixed precision.")
 
     args = parser.parse_args()
 
