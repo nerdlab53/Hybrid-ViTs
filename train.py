@@ -16,8 +16,10 @@ from models.densenet import DenseNet_for_Alzheimer
 from models.efficientnet import EfficientNet_for_Alzheimer
 from models.vgg import VGG_for_Alzheimer
 from models.mobilenet import MobileNet_for_Alzheimer
+from models.resnet import ResNet50_for_Alzheimer
 from utils.scheduler import WarmupCosineScheduler
 from dataset_utils.alzheimers_dataset import AlzheimersDataset
+from utils.data_loader import load_alzheimers_data
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +47,14 @@ def simple_accuracy(preds, labels):
 
 def save_model(args, model, global_step):
     model_to_save = model.module if hasattr(model, 'module') else model
-    model_checkpoint = os.path.join(args.output_dir, f"{args.name}_checkpoint_{global_step}.bin")
-    torch.save(model_to_save.save_dict(), model_checkpoint)
+    model_checkpoint = os.path.join(args.output_dir, f"{args.model_type}_{global_step}_checkpoint.pth")
+    
+    checkpoint = {
+        'model_state_dict': model_to_save.state_dict(),
+        'global_step': global_step,
+    }
+    
+    torch.save(checkpoint, model_checkpoint)
     logger.info("Saved model checkpoint to [DIR: %s]", args.output_dir)
 
 def setup(args):
@@ -56,11 +64,22 @@ def setup(args):
         model = VanillaViT_with_Inception(num_classes=args.num_classes)
     elif args.model_type == 'VanillaViT_with_ModifiedInception':
         model = VanillaViT_with_ModifiedInception(num_classes=args.num_classes)
+    elif args.model_type == 'DenseNet121':
+        model = DenseNet_for_Alzheimer(num_classes=args.num_classes)
+    elif args.model_type == 'EfficientNet':
+        model = EfficientNet_for_Alzheimer(num_classes=args.num_classes)
+    elif args.model_type == 'VGG16':
+        model = VGG_for_Alzheimer(num_classes=args.num_classes)
+    elif args.model_type == 'MobileNetV2':
+        model = MobileNet_for_Alzheimer(num_classes=args.num_classes)
+    elif args.model_type == 'ResNet50':
+        model = ResNet50_for_Alzheimer(num_classes=args.num_classes)
     else:
-        raise ValueError(f"Unkown model type : {args.model_type}")
+        raise ValueError(f"Unknown model type: {args.model_type}")
+        
     model.to(args.device)
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info("Total Parameters : \t%2.1fM" % (num_params / 1000000))
+    logger.info("Total Parameters: \t%2.1fM" % (num_params / 1000000))
     return args, model
 
 def set_seed(args):
@@ -122,6 +141,18 @@ def valid(args, model, writer, test_loader, global_step):
     writer.add_scalar("test/loss", scalar_value=eval_losses.avg, global_step=global_step)
     return accuracy, eval_losses.avg
 
+def get_optimizer(args, model):
+    if args.model_type in ['VanillaViT', 'VanillaViT_with_Inception', 'VanillaViT_with_ModifiedInception']:
+        optimizer = torch.optim.SGD(model.parameters(),
+                                  lr=args.learning_rate,
+                                  momentum=0.9,
+                                  weight_decay=args.weight_decay)
+    else:  # CNN models
+        optimizer = torch.optim.Adam(model.parameters(),
+                                   lr=args.learning_rate * 0.1,
+                                   weight_decay=args.weight_decay)
+    return optimizer
+
 def train(args, model):
     """Training"""
     
@@ -152,17 +183,14 @@ def train(args, model):
         trainset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform_train)
         testset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform_test)
     elif args.dataset == "alzheimers":
-        trainset = AlzheimersDataset(root_dir=args.data_dir + "/train", transform=transform_train)
-        testset = AlzheimersDataset(root_dir=args.data_dir + "/test", transform=transform_test)
+        train_loader, test_loader = load_alzheimers_data(
+            args.data_dir, 
+            args.train_batch_size,
+            dataset_type=args.dataset_type
+        )
 
     
-    train_loader = DataLoader(trainset, batch_size=args.train_batch_size, shuffle=True, num_workers=4, pin_memory=True)
-    test_loader = DataLoader(testset, batch_size=args.eval_batch_size, shuffle=False, num_workers=4, pin_memory=True)
-
-    optimizer = torch.optim.SGD(model.parameters(),
-                                lr=args.learning_rate,
-                                momentum=0.9,
-                                weight_decay=args.weight_decay)
+    optimizer = get_optimizer(args, model)
     t_total = args.num_steps
     
     scheduler = WarmupCosineScheduler(optimizer, warmup_steps=args.warmup_steps, t_total=t_total)
@@ -256,8 +284,11 @@ def main():
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
     parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"], default="cifar10", help="Which downstream task.")
-    parser.add_argument("--model_type", choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception", "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2"],
-                        default="VanillaViT", help="Which model to use.")
+    parser.add_argument("--model_type", 
+        choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception",
+                "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2", "ResNet50"],
+        default="VanillaViT", 
+        help="Which model to use.")
     parser.add_argument("--output_dir", default="output", type=str, help="The output directory where checkpoints will be written.")
 
     parser.add_argument("--img_size", default=224, type=int, help="Resolution size")
@@ -275,6 +306,8 @@ def main():
     parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
     parser.add_argument("--data_dir", default="./data/alzheimers", type=str, help="Path to the dataset directory")
+    parser.add_argument("--dataset_type", choices=["Original", "Augmented"], 
+                       default="Original", help="Which dataset type to use")
     
     args = parser.parse_args()
 

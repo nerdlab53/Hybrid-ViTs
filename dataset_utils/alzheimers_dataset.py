@@ -12,18 +12,26 @@ from pathlib import Path
 
 class AlzheimersDataset(Dataset):
 
-    def __init__(self, root_dir : str, transform : Optional[transforms.compose] = None, image_size : Tuple[int, int] = (224, 224)):
-        self.root_dir = root_dir
+    def __init__(self, root_dir: str, dataset_type: str = "Original", transform: Optional[transforms.Compose] = None, 
+                 image_size: Tuple[int, int] = (224, 224)):
+        self.root_dir = Path(root_dir)
         self.transform = transform
         self.image_size = image_size
-
-        self.classes = sorted([d for d in os.listdir(root_dir) 
-                             if os.path.isdir(os.path.join(root_dir, d))])
-
-        self.class_to_idx = {cls_name : i for i, cls_name in enumerate(self.classes)}
+        self.dataset_type = dataset_type
         
+        # Select dataset folder based on type
+        if dataset_type == "Original":
+            self.data_dir = self.root_dir / "OriginalDataset"
+        else:
+            self.data_dir = self.root_dir / "AugmentedAlzheimerDataset"
+        
+        self.classes = sorted([d for d in os.listdir(self.data_dir) 
+                             if os.path.isdir(os.path.join(self.data_dir, d))])
+        
+        self.class_to_idx = {cls_name: i for i, cls_name in enumerate(self.classes)}
         self.images: List[Tuple[str, int]] = []
         self._load_dataset()
+        
         # Default Transform if None is specified
         if self.transform is None:
             self.transform = transforms.Compose([
@@ -39,7 +47,7 @@ class AlzheimersDataset(Dataset):
 
         for class_name in self.classes:
             class_idx = self.class_to_idx[class_name]
-            class_dir = self.root_dir / class_name
+            class_dir = self.data_dir / class_name
 
             for img_path in class_dir.glob('*'):
                 if img_path.suffix.lower() in valid_extensions:
