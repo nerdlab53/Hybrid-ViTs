@@ -92,4 +92,4 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
         return x
 
     def get_attention_weigths(self):
-        return self.attn_weigh
+        return self.attn_weights

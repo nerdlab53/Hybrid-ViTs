@@ -17,6 +17,7 @@ from models.efficientnet import EfficientNet_for_Alzheimer
 from models.vgg import VGG_for_Alzheimer
 from models.mobilenet import MobileNet_for_Alzheimer
 from utils.scheduler import WarmupCosineScheduler
+from dataset_utils.alzheimers_dataset import AlzheimersDataset
 
 logger = logging.getLogger(__name__)
 
@@ -147,11 +148,12 @@ def train(args, model):
     if args.dataset == "cifar10":
         trainset = datasets.CIFAR10(root="./data", train=True, download=True, transform=transform_train)
         testset = datasets.CIFAR10(root="./data", train=False, download=True, transform=transform_test)
-    
-
     elif args.dataset == "cifar100":
         trainset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform_train)
         testset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform_test)
+    elif args.dataset == "alzheimers":
+        trainset = AlzheimersDataset(root_dir=args.data_dir + "/train", transform=transform_train)
+        testset = AlzheimersDataset(root_dir=args.data_dir + "/test", transform=transform_test)
 
     
     train_loader = DataLoader(trainset, batch_size=args.train_batch_size, shuffle=True, num_workers=4, pin_memory=True)
@@ -253,7 +255,7 @@ def main():
     parser = argparse.ArgumentParser()
     # Required parameters
     parser.add_argument("--name", required=True, help="Name of this run. Used for monitoring.")
-    parser.add_argument("--dataset", choices=["cifar10", "cifar100"], default="cifar10", help="Which downstream task.")
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"], default="cifar10", help="Which downstream task.")
     parser.add_argument("--model_type", choices=["VanillaViT", "VanillaViT_with_Inception", "VanillaViT_with_ModifiedInception", "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2"],
                         default="VanillaViT", help="Which model to use.")
     parser.add_argument("--output_dir", default="output", type=str, help="The output directory where checkpoints will be written.")
@@ -272,6 +274,7 @@ def main():
     parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
     parser.add_argument('--seed', type=int, default=42, help="random seed for initialization")
     parser.add_argument('--gradient_accumulation_steps', type=int, default=1, help="Number of updates steps to accumulate before performing a backward/update pass.")
+    parser.add_argument("--data_dir", default="./data/alzheimers", type=str, help="Path to the dataset directory")
     
     args = parser.parse_args()
 

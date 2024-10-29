@@ -9,27 +9,32 @@ from models.densenet import DenseNet_for_Alzheimer
 from models.efficientnet import EfficientNet_for_Alzheimer
 from models.vgg import VGG_for_Alzheimer
 from models.mobilenet import MobileNet_for_Alzheimer
-from utils.data_loader import load_data
+from utils.data_loader import load_data, load_alzheimers_data
+import argparse
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def evaluate_model(model, data_loader):
+def evaluate_model(model, data_loader, device):
     model.eval()
-    top1_correct = 0
-    top5_correct = 0
+    correct = 0
     total = 0
-
+    all_preds = []
+    all_labels = []
+    
     with torch.no_grad():
         for images, labels in data_loader:
+            images = images.to(device)
+            labels = labels.to(device)
             outputs = model(images)
-            _, top5 = outputs.topk(5, 1, True, True)
-            top1_correct += (top5[:, 0:1] == labels.view(-1, 1)).sum().item()
-            top5_correct += (top5 == labels.view(-1, 1)).any(dim=1).sum().item()
+            _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
-
-    top1_accuracy = top1_correct / total * 100
-    top5_accuracy = top5_correct / total * 100
-    return top1_accuracy, top5_accuracy
+            correct += (predicted == labels).sum().item()
+            
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+    
+    accuracy = 100 * correct / total
+    return accuracy, all_preds, all_labels
 
 def save_results(results, filename="model_evaluation_results.csv"):
     with open(filename, mode='w', newline='') as file:
@@ -39,7 +44,18 @@ def save_results(results, filename="model_evaluation_results.csv"):
             writer.writerow(result)
 
 def main():
-    data_loader = load_data()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"], default="alzheimers")
+    parser.add_argument("--data_dir", default="./data/alzheimers", help="Path to dataset")
+    parser.add_argument("--batch_size", type=int, default=32)
+    args = parser.parse_args()
+    
+    if args.dataset == "alzheimers":
+        train_loader, test_loader = load_alzheimers_data(args.data_dir, args.batch_size)
+    else:
+        # Existing CIFAR loading logic
+        pass
+    
     models = {
         "VanillaViT_with_Inception": VanillaViT_with_Inception(),
         "VanillaViT_with_ModifiedInception": VanillaViT_with_ModifiedInceptionModule(),
@@ -50,14 +66,14 @@ def main():
         "VGG16_BN": VGG_for_Alzheimer(),
         "MobileNetV2": MobileNet_for_Alzheimer()
     }
-
+    
     results = []
     for name, model in models.items():
-        model = model.to(device)  # Add device handling
-        top1_accuracy, top5_accuracy = evaluate_model(model, data_loader)
-        results.append([name, top1_accuracy, top5_accuracy])
-        print(f"{name} - Top-1 Accuracy: {top1_accuracy:.2f}%, Top-5 Accuracy: {top5_accuracy:.2f}%")
-
+        model = model.to(device)
+        accuracy, preds, labels = evaluate_model(model, test_loader, device)
+        results.append([name, accuracy])
+        print(f"{name} - Accuracy: {accuracy:.2f}%")
+    
     save_results(results)
 
 if __name__ == "__main__":
