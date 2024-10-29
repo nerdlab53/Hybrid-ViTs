@@ -1,7 +1,7 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
-from inception_modules import ModifiedInceptionModule
+from .inception_modules import ModifiedInceptionModule
 from dataset_utils.config import Alzheimer_CFG
 
 config = Alzheimer_CFG()
@@ -41,18 +41,18 @@ class TransformerBlock(nn.Module):
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = nn.Sequential(
-            nn.Linear(dim, dim),
+            nn.Linear(dim, mlp_dim),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(mlp_dim, dim),
             nn.Dropout(dropout)
         )
 
-        def forward(self, x):
-            attn_output, attn_weights = self.attn(self.norm1(x))
-            x = x + attn_output
-            x = x + self.mlp(self.norm2(x))
-            return x, attn_weights
+    def forward(self, x):
+        attn_output, attn_weights = self.attn(self.norm1(x))
+        x = x + attn_output
+        x = x + self.mlp(self.norm2(x))
+        return x, attn_weights
 
 class VanillaViT_with_ModifiedInceptionModule(nn.Module):
     '''VanillaViT with Modified Inception Module backbone
@@ -75,6 +75,12 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
         self.transformer_blocks = nn.ModuleList([
             TransformerBlock(dim, heads, mlp_dim, dropout) for _ in range(depth)
         ])
+        
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, num_classes)
+        )
+        self.attention_weights = []
     
     def forward(self, x):
         x = self.inception(x)
@@ -91,5 +97,5 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
         x = self.mlp_head(x)
         return x
 
-    def get_attention_weigths(self):
-        return self.attn_weights
+    def get_attention_weights(self):
+        return self.attention_weights

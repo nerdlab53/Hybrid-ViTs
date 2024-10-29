@@ -11,7 +11,7 @@ from tqdm import tqdm
 from datetime import timedelta
 from models.VanillaViT import VanillaViT
 from models.VanillaViT_with_Inception import VanillaViT_with_Inception
-from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInception
+from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInceptionModule
 from models.densenet import DenseNet_for_Alzheimer
 from models.efficientnet import EfficientNet_for_Alzheimer
 from models.vgg import VGG_for_Alzheimer
@@ -63,7 +63,7 @@ def setup(args):
     elif args.model_type == 'VanillaViT_with_Inception':
         model = VanillaViT_with_Inception(num_classes=args.num_classes)
     elif args.model_type == 'VanillaViT_with_ModifiedInception':
-        model = VanillaViT_with_ModifiedInception(num_classes=args.num_classes)
+        model = VanillaViT_with_ModifiedInceptionModule(num_classes=args.num_classes)
     elif args.model_type == 'DenseNet121':
         model = DenseNet_for_Alzheimer(num_classes=args.num_classes)
     elif args.model_type == 'EfficientNet':

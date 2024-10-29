@@ -1,7 +1,7 @@
 import torch 
 import torch.nn as nn
 import torch.nn.functional as F
-from inception_modules import InceptionModule
+from .inception_modules import InceptionModule
 from dataset_utils.config import Alzheimer_CFG
 
 config = Alzheimer_CFG()
