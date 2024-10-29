@@ -12,40 +12,42 @@ from pathlib import Path
 
 class AlzheimersDataset(Dataset):
 
-    def __init__(self, root_dir: str, dataset_type: str = "Original", transform: Optional[transforms.Compose] = None, 
-                 image_size: Tuple[int, int] = (224, 224), split='train'):
+    def __init__(self, root_dir: str, dataset_type: str = "Original", transform: Optional[transforms.Compose] = None):
         """
         Args:
             root_dir (str): Directory with all the images
-            dataset_type (str): "Original" or "Augmented"
+            dataset_type (str): "Original" or "Augmented" to specify which dataset to use
             transform (callable, optional): Optional transform to be applied on a sample
-            split (str): 'train' or 'test' to specify which dataset to load
         """
         self.root_dir = root_dir
         self.transform = transform
-        self.image_size = image_size
-        self.dataset_type = dataset_type
-        self.split = split
         
-        # Print directory structure for debugging
-        print(f"Looking for data in: {root_dir}")
-        if os.path.exists(root_dir):
-            print("Contents of root_dir:")
-            for item in os.listdir(root_dir):
-                print(f"- {item}")
+        # Map dataset_type to actual folder names
+        dataset_map = {
+            "Original": "OriginalDataset",
+            "Augmented": "AugmentedAlzheimerDataset"
+        }
         
-        # Adjust the path based on dataset structure
-        data_path = os.path.join(root_dir, dataset_type)
+        # Get the correct folder name
+        folder_name = dataset_map.get(dataset_type)
+        if not folder_name:
+            raise ValueError(f"dataset_type must be one of {list(dataset_map.keys())}")
         
+        data_path = os.path.join(root_dir, folder_name)
+        if not os.path.exists(data_path):
+            raise ValueError(f"Dataset path does not exist: {data_path}")
+            
         # Get all image paths and labels
         self.image_paths = []
         self.labels = []
         
         class_names = ['NonDemented', 'VeryMildDemented', 'MildDemented', 'ModerateDemented']
         
+        print(f"Loading data from: {data_path}")
         for class_idx, class_name in enumerate(class_names):
             class_path = os.path.join(data_path, class_name)
             if os.path.exists(class_path) and os.path.isdir(class_path):
+                print(f"Processing class {class_name}")
                 for img_name in os.listdir(class_path):
                     if img_name.endswith(('.jpg', '.jpeg', '.png')):
                         self.image_paths.append(os.path.join(class_path, img_name))
@@ -67,7 +69,7 @@ class AlzheimersDataset(Dataset):
             image = Image.open(img_path).convert('RGB')
         except Exception as e:
             print(f"Error loading image : {img_path} : {e}")
-            image = Image.new('RGB', self.image_size, color='black')
+            image = Image.new('RGB', (224, 224), color='black')
 
         if self.transform:
             image = self.transform(image)
