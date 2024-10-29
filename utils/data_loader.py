@@ -4,65 +4,57 @@ from torchvision import transforms
 import torch
 
 def load_alzheimers_data(data_dir, batch_size=32, num_workers=4, dataset_type="Original", val_split=0.1):
-    """Load Alzheimer's dataset with train/val/test splits
-    
-    Args:
-        data_dir: Path to dataset
-        batch_size: Batch size for dataloaders
-        num_workers: Number of workers for dataloaders
-        dataset_type: "Original" or "Augmented"
-        val_split: Fraction of training data to use for validation
-    """
+    """Load Alzheimer's dataset with train/val splits"""
     transform_train = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                            std=[0.229, 0.224, 0.225])
     ])
     
-    transform_test = transforms.Compose([
+    transform_val = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                            std=[0.229, 0.224, 0.225])
     ])
     
-    # Load full training dataset
-    train_dataset = AlzheimersDataset(
+    # Load full dataset
+    full_dataset = AlzheimersDataset(
         root_dir=data_dir,
         dataset_type=dataset_type,
-        transform=transform_train,
-        split='train'
+        transform=transform_train
     )
     
     # Calculate split sizes
-    total_size = len(train_dataset)
+    total_size = len(full_dataset)
     val_size = int(val_split * total_size)
     train_size = total_size - val_size
     
-    # Split into train and validation
+    # Create train/val splits
     train_dataset, val_dataset = torch.utils.data.random_split(
-        train_dataset, 
+        full_dataset, 
         [train_size, val_size],
         generator=torch.Generator().manual_seed(42)
     )
     
-    # Create a new validation dataset with test transforms
-    val_dataset = AlzheimersDataset(
-        root_dir=data_dir,
-        dataset_type=dataset_type,
-        transform=transform_test,
-        split='train'  # Still using train split, but different subset
-    )
+    # Create custom Subset class that can modify transforms
+    class TransformSubset(torch.utils.data.Subset):
+        def __init__(self, dataset, indices, transform=None):
+            super().__init__(dataset, indices)
+            self.transform = transform
+        
+        def __getitem__(self, idx):
+            x, y = super().__getitem__(idx)
+            if self.transform:
+                x = self.transform(x)
+            return x, y
     
-    # Load test dataset
-    test_dataset = AlzheimersDataset(
-        root_dir=data_dir,
-        dataset_type=dataset_type,
-        transform=transform_test,
-        split='test'
-    )
+    # Apply different transforms to validation set
+    val_dataset = TransformSubset(full_dataset, val_dataset.indices, transform_val)
     
     # Create data loaders
     train_loader = DataLoader(
@@ -81,12 +73,4 @@ def load_alzheimers_data(data_dir, batch_size=32, num_workers=4, dataset_type="O
         pin_memory=True
     )
     
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True
-    )
-    
-    return train_loader, val_loader, test_loader
+    return train_loader, val_loader, None  # Return None for test_loader as we don't have a separate test set

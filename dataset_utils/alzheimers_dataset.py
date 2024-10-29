@@ -14,35 +14,47 @@ class AlzheimersDataset(Dataset):
 
     def __init__(self, root_dir: str, dataset_type: str = "Original", transform: Optional[transforms.Compose] = None, 
                  image_size: Tuple[int, int] = (224, 224), split='train'):
-        self.root_dir = Path(root_dir)
+        """
+        Args:
+            root_dir (str): Directory with all the images
+            dataset_type (str): "Original" or "Augmented"
+            transform (callable, optional): Optional transform to be applied on a sample
+            split (str): 'train' or 'test' to specify which dataset to load
+        """
+        self.root_dir = root_dir
         self.transform = transform
         self.image_size = image_size
         self.dataset_type = dataset_type
         self.split = split
         
-        # Adjust the path based on split
-        data_path = os.path.join(root_dir, dataset_type, 'train' if split == 'train' else 'test')
+        # Print directory structure for debugging
+        print(f"Looking for data in: {root_dir}")
+        if os.path.exists(root_dir):
+            print("Contents of root_dir:")
+            for item in os.listdir(root_dir):
+                print(f"- {item}")
+        
+        # Adjust the path based on dataset structure
+        data_path = os.path.join(root_dir, dataset_type)
         
         # Get all image paths and labels
         self.image_paths = []
         self.labels = []
         
-        for class_idx, class_name in enumerate(sorted(os.listdir(data_path))):
+        class_names = ['NonDemented', 'VeryMildDemented', 'MildDemented', 'ModerateDemented']
+        
+        for class_idx, class_name in enumerate(class_names):
             class_path = os.path.join(data_path, class_name)
-            if os.path.isdir(class_path):
+            if os.path.exists(class_path) and os.path.isdir(class_path):
                 for img_name in os.listdir(class_path):
                     if img_name.endswith(('.jpg', '.jpeg', '.png')):
                         self.image_paths.append(os.path.join(class_path, img_name))
                         self.labels.append(class_idx)
         
-        # Default Transform if None is specified
-        if self.transform is None:
-            self.transform = transforms.Compose([
-                transforms.Resize(image_size),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                  std=[0.229, 0.224, 0.225])
-            ])
+        if len(self.image_paths) == 0:
+            raise ValueError(f"No images found in {data_path}")
+        
+        print(f"Found {len(self.image_paths)} images in {len(set(self.labels))} classes")
     
     def __len__(self) -> int:
         return len(self.image_paths)

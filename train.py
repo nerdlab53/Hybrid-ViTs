@@ -205,7 +205,7 @@ def train(args, model):
         trainset = datasets.CIFAR100(root="./data", train=True, download=True, transform=transform_train)
         testset = datasets.CIFAR100(root="./data", train=False, download=True, transform=transform_test)
     elif args.dataset == "alzheimers":
-        train_loader, val_loader, test_loader = load_alzheimers_data(
+        train_loader, val_loader, _ = load_alzheimers_data(
             args.data_dir,
             batch_size=args.train_batch_size,
             dataset_type=args.dataset_type,
