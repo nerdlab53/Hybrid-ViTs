@@ -133,7 +133,7 @@ def valid(args, model, writer, test_loader, global_step):
         x = x.to(args.device)
         y = y.to(args.device)
 
-        with torch.no_grad():
+        with torch.no_grad(): 
             logits = model(x)
             eval_loss = loss_fct(logits, y)
             eval_losses.update(eval_loss.item())
@@ -178,6 +178,9 @@ def get_optimizer(args, model):
 
 def train(args, model):
     """Training"""
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
     
     model_name = args.model_type
     eval_dir = os.path.join(args.output_dir, "eval", model_name)

@@ -2,6 +2,7 @@ import os
 import torch
 
 def save_checkpoint(state, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
     filename = os.path.join(output_dir, 'checkpoint_best.pth')
     torch.save(state, filename)
 
