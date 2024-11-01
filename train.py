@@ -308,6 +308,22 @@ def train(args, model):
         # Validation phase
         val_loss, val_acc = validate(args, model, val_loader, criterion)
         
+        # Save periodic checkpoint
+        if (epoch + 1) % args.save_steps == 0:
+            save_model(args, model, epoch)
+        
+        # Save best model
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            save_checkpoint({
+                'epoch': epoch + 1,
+                'state_dict': model.state_dict(),
+                'best_val_acc': best_val_acc,
+                'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler.state_dict(),  # Also save scheduler state
+                'args': args,  # Save configuration
+            }, args.output_dir, is_best=True)  # Add is_best flag
+        
         # Log metrics
         metrics_logger.update(
             epoch=epoch,
@@ -322,16 +338,6 @@ def train(args, model):
         
         writer.add_scalar("val/loss", scalar_value=val_loss, global_step=epoch)
         writer.add_scalar("val/accuracy", scalar_value=val_acc, global_step=epoch)
-        
-        # Save best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'state_dict': model.state_dict(),
-                'best_val_acc': best_val_acc,
-                'optimizer': optimizer.state_dict(),
-            }, args.output_dir)
         
         # Log to console
         logger.info(f'Epoch {epoch+1}: '
