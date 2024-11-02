@@ -16,6 +16,10 @@ class PatchEmbedding(
             stride=patch_size,
             padding=0
         )
+        # Initialize patch embedding projection
+        nn.init.xavier_uniform_(self.projection.weight)
+        if self.projection.bias is not None:
+            nn.init.zeros_(self.projection.bias)
         self.flatten = nn.Flatten(start_dim=2, end_dim=3)
 
     def forward(self, x):

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils.config import VanillaViT
 from utils.patch_embedding import PatchEmbedding
-
+from utils.initialization import init_vit_weights
 config = VanillaViT()
 
 class Attention(nn.Module):
@@ -16,6 +16,15 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(dropout)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(dropout)
+        # Initialize QKV with scaled initialization
+        nn.init.xavier_uniform_(self.qkv.weight)
+        if hasattr(self.qkv, 'bias') and self.qkv.bias is not None:
+            nn.init.zeros_(self.qkv.bias)
+        
+        # Initialize projection
+        nn.init.xavier_uniform_(self.proj.weight)
+        if hasattr(self.proj, 'bias') and self.proj.bias is not None:
+            nn.init.zeros_(self.proj.bias)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -44,6 +53,12 @@ class TransformerBlock(nn.Module):
             nn.Linear(mlp_dim, dim),
             nn.Dropout(dropout)
         )
+        # Initialize MLP layers
+        for m in self.mlp.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         attn_output, attn_weights = self.attn(self.norm1(x))
@@ -100,6 +115,19 @@ class VanillaViT(nn.Module):
         )
 
         self.attention_weights = []
+
+        # Initialize weights
+        self.apply(init_vit_weights)
+        
+        # Special initialization for patch embedding
+        nn.init.normal_(self.patch_embedding.conv_patch_layer.weight, std=.02)
+        nn.init.normal_(self.patch_embedding.projection.weight, std=.02)
+        # Initialize class token
+        nn.init.normal_(self.class_token, std=.02)
+        
+        # Initialize position embedding
+        nn.init.normal_(self.positional_embedding, std=.02)
+
 
     def forward(self, x):
         batch_size = x.shape[0]

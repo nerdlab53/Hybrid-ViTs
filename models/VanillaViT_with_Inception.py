@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .inception_modules import InceptionModule
 from dataset_utils.config import Alzheimer_CFG
+from utils.initialization import init_vit_weights
 
 config = Alzheimer_CFG()
 
@@ -16,6 +17,15 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(p=dropout)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(p=dropout)
+        # Initialize QKV with scaled initialization
+        nn.init.xavier_uniform_(self.qkv.weight)
+        if hasattr(self.qkv, 'bias') and self.qkv.bias is not None:
+            nn.init.zeros_(self.qkv.bias)
+        
+        # Initialize projection
+        nn.init.xavier_uniform_(self.proj.weight)
+        if hasattr(self.proj, 'bias') and self.proj.bias is not None:
+            nn.init.zeros_(self.proj.bias)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -49,6 +59,12 @@ class TransformerBlock(nn.Module):
             nn.Linear(mlp_dim, dim),
             nn.Dropout(dropout)
         )
+        # Initialize MLP layers
+        for m in self.mlp.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
     
     
     def forward(self, x):
@@ -83,6 +99,25 @@ class VanillaViT_with_Inception(nn.Module):
             nn.LayerNorm(dim),
             nn.Linear(dim, num_classes)
         )
+        # Initialize weights
+        self.apply(init_vit_weights)
+        
+        # Special initialization for inception module
+        def _init_inception(m):
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+        
+        self.inception.apply(_init_inception)
+        
+        # Initialize linear projection
+        nn.init.xavier_uniform_(self.linear_proj.weight)
+        nn.init.zeros_(self.linear_proj.bias)
+
         self.attention_weights = []
 
     def forward(self, x):

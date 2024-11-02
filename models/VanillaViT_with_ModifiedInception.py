@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .inception_modules import ModifiedInceptionModule
 from dataset_utils.config import Alzheimer_CFG
+from utils.initialization import init_vit_weights
+import math
 
 config = Alzheimer_CFG()
 
@@ -16,6 +18,16 @@ class Attention(nn.Module):
         self.attn_drop = nn.Dropout(dropout)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(dropout)
+        # Initialize QKV with scaled initialization
+        val = math.sqrt(6.) / math.sqrt(self.qkv.weight.shape[0] // 3 + self.qkv.weight.shape[1])
+        nn.init.uniform_(self.qkv.weight, -val, val)
+        if hasattr(self.qkv, 'bias') and self.qkv.bias is not None:
+            nn.init.zeros_(self.qkv.bias)
+        
+        # Initialize projection with gain
+        nn.init.xavier_uniform_(self.proj.weight, gain=1.0)
+        if hasattr(self.proj, 'bias') and self.proj.bias is not None:
+            nn.init.zeros_(self.proj.bias)
 
     def forward(self, x):
         B, N, C = x.shape
@@ -47,6 +59,12 @@ class TransformerBlock(nn.Module):
             nn.Linear(mlp_dim, dim),
             nn.Dropout(dropout)
         )
+        # Initialize MLP layers
+        for m in self.mlp.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x):
         attn_output, attn_weights = self.attn(self.norm1(x))
@@ -80,6 +98,26 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
             nn.LayerNorm(dim),
             nn.Linear(dim, num_classes)
         )
+                # Initialize weights
+        self.apply(lambda x: init_vit_weights(x, gain=1.0))
+        
+        # Special initialization for modified inception module
+        def _init_modified_inception(m):
+            if isinstance(m, nn.Conv2d):
+                # Update Kaiming init with proper gain
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu', a=math.sqrt(5))
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+        
+        self.inception.apply(_init_modified_inception)
+        
+        # Initialize linear projection with specific gain
+        nn.init.xavier_uniform_(self.linear_proj.weight, gain=1.0)
+        nn.init.zeros_(self.linear_proj.bias)
+
         self.attention_weights = []
     
     def forward(self, x):
