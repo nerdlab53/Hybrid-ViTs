@@ -1,11 +1,18 @@
 import os
 import torch
 
-def save_checkpoint(state, output_dir):
+def save_checkpoint(state, output_dir, is_best=False):
     os.makedirs(output_dir, exist_ok=True)
-    filename = os.path.join(output_dir, 'checkpoint_best.pth')
+    
+    # Save the latest checkpoint
+    filename = os.path.join(output_dir, 'checkpoint_latest.pth')
     torch.save(state, filename)
-
+    
+    # If this is the best model so far, save it as the best model
+    if is_best:
+        best_filename = os.path.join(output_dir, 'checkpoint_best.pth')
+        torch.save(state, best_filename)
+        
 def load_checkpoint(model, checkpoint_path):
     if os.path.isfile(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
