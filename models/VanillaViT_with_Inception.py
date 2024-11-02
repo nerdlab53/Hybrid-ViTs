@@ -30,7 +30,7 @@ class Attention(nn.Module):
     def forward(self, x):
         B, N, C = x.shape
         #(B, N, C)
-        qkv = self.qkv(x).reshape(B, N, 3, self.heads, C // self.heads).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         #(B, N, C) -> (B, N, 3, heads, C//heads).permute(2, 0, 3, 1, 4) -> (3, B, heads, N, C//heads)
         q, k, v = qkv[0], qkv[1], qkv[2]
         #(B, heads, N, C // heads)
@@ -47,7 +47,7 @@ class Attention(nn.Module):
 
 class TransformerBlock(nn.Module):
     
-    def __init__(self, dim, num_heads, mlp_dim, dropout=-0.1):
+    def __init__(self, dim, num_heads, mlp_dim, dropout=0.1):
         super().__init__()
         self.attn = Attention(dim, num_heads=num_heads, dropout=dropout)
         self.norm1 = nn.LayerNorm(dim)
@@ -84,55 +84,84 @@ class VanillaViT_with_Inception(nn.Module):
                  num_classes=4,
                  dim=768,
                  depth=12,
-                 num_heads=12,  # Changed from 'heads' to 'num_heads'
+                 num_heads=12,
                  mlp_dim=3072,
                  dropout=0.1):
         super().__init__()
-        self.inception = InceptionModule(in_channels=3)
-        self.flatten = nn.Flatten(start_dim=1)
-        self.linear_proj = nn.Linear(64 * 4 * 32 * 32, dim)
         
+        self.inception = InceptionModule(in_channels=3)
+        
+        # Calculate the output size after inception module
+        # InceptionModule outputs 256 channels (64+64+96+32)
+        inception_out_channels = 256  # Total channels after concatenation
+        inception_spatial_size = img_size  # Inception maintains spatial dimensions
+        
+        # Add a reduction layer after inception to reduce spatial dimensions
+        self.reduction = nn.Sequential(
+            nn.Conv2d(inception_out_channels, dim, kernel_size=patch_size, stride=patch_size),
+            nn.LayerNorm([dim, img_size//patch_size, img_size//patch_size])
+        )
+        
+        num_patches = (img_size // patch_size) ** 2
+        
+        # Position embeddings and class token
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, dim))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.dropout = nn.Dropout(dropout)
+
+        # Transformer blocks
         self.transformer_blocks = nn.ModuleList(
             [TransformerBlock(dim, num_heads, mlp_dim, dropout) for _ in range(depth)]
         )
 
+        self.norm = nn.LayerNorm(dim)
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, num_classes)
         )
-        # Initialize weights
-        self.apply(init_vit_weights)
-        
-        # Special initialization for inception module
-        def _init_inception(m):
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
-        
-        self.inception.apply(_init_inception)
-        
-        # Initialize linear projection
-        nn.init.xavier_uniform_(self.linear_proj.weight)
-        nn.init.zeros_(self.linear_proj.bias)
 
+        # Initialize attention weights storage
         self.attention_weights = []
+
+        # Initialize weights
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        self.apply(init_vit_weights)
 
     def forward(self, x):
-        x = self.inception(x)
-        x = self.flatten(x)
-        x = self.linear_proj(x)
-        x = x.unsqueeze(1)
-
+        B = x.shape[0]
+        
+        # Clear attention weights from previous forward pass
         self.attention_weights = []
+        
+        # Inception feature extraction
+        x = self.inception(x)  # B, 256, 224, 224
+        
+        # Reduce spatial dimensions
+        x = self.reduction(x)  # B, dim, H/patch_size, W/patch_size
+        
+        # Reshape to sequence
+        x = x.flatten(2).transpose(1, 2)  # B, num_patches, dim
+        
+        # Add position embeddings
+        x = x + self.pos_embed
+        
+        # Add class token
+        cls_token = self.cls_token.expand(B, -1, -1)
+        x = torch.cat((cls_token, x), dim=1)
+        
+        x = self.dropout(x)
+
+        # Apply transformer blocks
         for block in self.transformer_blocks:
-            x, attn_weights = block(x)
-            self.attention_weights.append(attn_weights)
-        x = x.mean(dim=1)
+            x, attn = block(x)
+            self.attention_weights.append(attn)
+
+        # Use [CLS] token for classification
+        x = self.norm(x)
+        x = x[:, 0]  # Take only the CLS token
         x = self.mlp_head(x)
+        
         return x
 
     def get_attention_weights(self):
