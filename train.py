@@ -166,13 +166,13 @@ def valid(args, model, writer, test_loader, global_step):
 
 def get_optimizer(args, model):
     if args.model_type in ['VanillaViT', 'VanillaViT_with_Inception', 'VanillaViT_with_ModifiedInception']:
-        optimizer = torch.optim.SGD(model.parameters(),
-                                  lr=args.learning_rate,
-                                  momentum=0.9,
-                                  weight_decay=args.weight_decay)
+        optimizer = torch.optim.AdamW(model.parameters(),  # Changed from SGD to AdamW
+                                   lr=args.learning_rate,
+                                   weight_decay=args.weight_decay,
+                                   betas=(0.9, 0.999))
     else:  # CNN models
         optimizer = torch.optim.Adam(model.parameters(),
-                                   lr=args.learning_rate * 0.1,
+                                   lr=args.learning_rate,
                                    weight_decay=args.weight_decay)
     return optimizer
 
