@@ -86,7 +86,7 @@ class VanillaViT_with_Inception(nn.Module):
             mlp_dim=3072,
             dropout=0.1
     ):
-        super(VanillaViT_with_Inception, self).__init__()
+        super().__init__()
         self.inception = InceptionModule(in_channels=3)
         self.flatten = nn.Flatten(start_dim=1)
         self.linear_proj = nn.Linear(64 * 4 * 32 * 32, dim)
