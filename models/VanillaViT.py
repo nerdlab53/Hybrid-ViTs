@@ -120,7 +120,6 @@ class VanillaViT(nn.Module):
         self.apply(init_vit_weights)
         
         # Special initialization for patch embedding
-        nn.init.normal_(self.patch_embedding.conv_patch_layer.weight, std=.02)
         nn.init.normal_(self.patch_embedding.projection.weight, std=.02)
         # Initialize class token
         nn.init.normal_(self.class_token, std=.02)
