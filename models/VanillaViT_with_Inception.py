@@ -79,13 +79,13 @@ class VanillaViT_with_Inception(nn.Module):
 
     def __init__(self, 
                  img_size=224,
-                 patch_size=16,
+                 patch_size=32,
                  in_channels=3,
                  num_classes=4,
-                 dim=768,
-                 depth=12,
-                 num_heads=12,
-                 mlp_dim=3072,
+                 dim=384,
+                 depth=6,
+                 num_heads=6,
+                 mlp_dim=1536,
                  dropout=0.1):
         super().__init__()
         

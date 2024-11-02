@@ -78,11 +78,11 @@ class VanillaViT_with_ModifiedInceptionModule(nn.Module):
 
     def __init__(
             self,
-            num_classes=config.num_classes,
-            dim=768,
-            depth=12,
-            heads=12,
-            mlp_dim=3072,
+            num_classes=4,
+            dim=384,
+            depth=6,
+            heads=6,
+            mlp_dim=1536,
             dropout=0.1
     ):
         super(VanillaViT_with_ModifiedInceptionModule, self).__init__()
