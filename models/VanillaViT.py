@@ -60,7 +60,7 @@ class VanillaViT(nn.Module):
         num_channels: int = config.num_channels,
         patch_size=config.patch_size,
         embeddingdim=config.embeddingdim,
-        dropout=config.dropout,
+        dropout=0.1,
         mlp_size=config.mlp_size,
         num_transformer_layer=config.num_transformer_layer,
         num_heads = config.num_heads,
@@ -87,7 +87,7 @@ class VanillaViT(nn.Module):
             torch.randn(1, num_patches+1, embeddingdim)
         )
 
-        self.embedding_dropout = nn.Dropout(p=dropout)
+        self.embedding_dropout = nn.Dropout(p=float(dropout))
 
         self.transformer_blocks = nn.ModuleList([
             TransformerBlock(embeddingdim, num_heads, mlp_size, dropout) 
