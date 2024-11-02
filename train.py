@@ -23,6 +23,9 @@ from utils.checkpoints import save_checkpoint
 from dataset_utils.alzheimers_dataset import AlzheimersDataset
 from utils.data_loader import load_alzheimers_data
 from utils.metrics_logger import MetricsLogger
+from models.TinyViT import TinyViT
+from models.TinyViT_with_Inception import TinyViT_with_Inception
+from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
 
 logger = logging.getLogger(__name__)
 
@@ -80,13 +83,58 @@ def setup(args):
             embeddingdim=args.embeddingdim,
             num_heads=args.num_heads,
             mlp_size=args.mlp_size,
-            num_transformer_layer=args.num_transformer_layer,
+            num_transformer_layer=3,  # Reduced to 3
+            num_classes=args.num_classes
+        )
+    elif args.model_type == "TinyViT":
+        model = TinyViT(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            embedding_dim=192,  # Reduced dimension
+            num_heads=3,
+            mlp_size=768,
+            num_transformer_layer=3,  # Reduced to 3
             num_classes=args.num_classes
         )
     elif args.model_type == "VanillaViT_with_Inception":
-        model = VanillaViT_with_Inception(num_classes=args.num_classes)
+        model = VanillaViT_with_Inception(
+            img_size=args.img_size,
+            patch_size=args.patch_size,
+            in_channels=args.num_channels,
+            num_classes=args.num_classes,
+            dim=192,  # Reduced dimension
+            depth=3,  # Reduced to 3
+            num_heads=3,
+            mlp_dim=768
+        )
+    elif args.model_type == "TinyViT_with_Inception":
+        model = TinyViT_with_Inception(
+            img_size=args.img_size,
+            patch_size=args.patch_size,
+            in_channels=args.num_channels,
+            num_classes=args.num_classes,
+            dim=192,
+            depth=3,  # Reduced to 3
+            num_heads=3,
+            mlp_dim=768
+        )
     elif args.model_type == "VanillaViT_with_ModifiedInception":
-        model = VanillaViT_with_ModifiedInceptionModule(num_classes=args.num_classes)
+        model = VanillaViT_with_ModifiedInceptionModule(
+            num_classes=args.num_classes,
+            dim=192,  # Reduced dimension
+            depth=3,  # Reduced to 3
+            heads=3,
+            mlp_dim=768
+        )
+    elif args.model_type == "TinyViT_with_ModifiedInception":
+        model = TinyViT_with_ModifiedInception(
+            num_classes=args.num_classes,
+            dim=192,
+            depth=3,  # Reduced to 3
+            num_heads=3,
+            mlp_dim=768
+        )
     elif args.model_type == "DenseNet121":
         model = DenseNet_for_Alzheimer(num_classes=args.num_classes)
     elif args.model_type == "EfficientNet":
