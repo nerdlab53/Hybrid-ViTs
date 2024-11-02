@@ -11,7 +11,7 @@ class Attention(nn.Module):
 
     def __init__(self, dim, num_heads=12, dropout=0.1):
         super().__init__()
-        self.heads = num_heads
+        self.num_heads = num_heads
         self.scale = dim** -0.5
         self.qkv = nn.Linear(dim, dim*3, bias=False)
         self.attn_drop = nn.Dropout(p=dropout)
@@ -47,9 +47,9 @@ class Attention(nn.Module):
 
 class TransformerBlock(nn.Module):
     
-    def __init__(self, dim, heads, mlp_dim, dropout=-0.1):
+    def __init__(self, dim, num_heads, mlp_dim, dropout=-0.1):
         super().__init__()
-        self.attn = Attention(dim, heads=heads, dropout=dropout)
+        self.attn = Attention(dim, num_heads=num_heads, dropout=dropout)
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.mlp = nn.Sequential(
@@ -77,22 +77,23 @@ class VanillaViT_with_Inception(nn.Module):
     '''VanillaViT with InceptionModule backbone
     '''
 
-    def __init__(
-            self,
-            num_classes=config.num_classes,
-            dim=768,
-            depth=12,
-            heads=12,
-            mlp_dim=3072,
-            dropout=0.1
-    ):
+    def __init__(self, 
+                 img_size=224,
+                 patch_size=16,
+                 in_channels=3,
+                 num_classes=4,
+                 dim=768,
+                 depth=12,
+                 num_heads=12,  # Changed from 'heads' to 'num_heads'
+                 mlp_dim=3072,
+                 dropout=0.1):
         super().__init__()
         self.inception = InceptionModule(in_channels=3)
         self.flatten = nn.Flatten(start_dim=1)
         self.linear_proj = nn.Linear(64 * 4 * 32 * 32, dim)
         
         self.transformer_blocks = nn.ModuleList(
-            [TransformerBlock(dim, heads, mlp_dim, dropout) for _ in range(depth)]
+            [TransformerBlock(dim, num_heads, mlp_dim, dropout) for _ in range(depth)]
         )
 
         self.mlp_head = nn.Sequential(
