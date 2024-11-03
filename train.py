@@ -31,6 +31,8 @@ from models.TinyViT_with_Inception import TinyViT_with_Inception
 from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
 import copy
 from models.TinyViT_BEiT import TinyViT_BEiT
+from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
+from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +185,24 @@ def setup(args):
         model = ResNet50_for_Alzheimer(num_classes=args.num_classes)
     elif args.model_type == "TinyViT_BEiT":
         model = TinyViT_BEiT(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            num_classes=args.num_classes,
+            dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone
+        )
+    elif args.model_type == "TinyViT_DeiT_with_Inception":
+        model = TinyViT_DeiT_with_Inception(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            num_classes=args.num_classes,
+            dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone
+        )
+    elif args.model_type == "TinyViT_DeiT_with_ModifiedInception":
+        model = TinyViT_DeiT_with_ModifiedInception(
             img_size=args.img_size,
             num_channels=args.num_channels,
             patch_size=args.patch_size,
@@ -583,7 +603,8 @@ def main():
                         "VanillaViT_with_ModifiedInception", "ResNet50",
                         "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
                         "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception",
-                        "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt", "TinyViT_BEiT"
+                        "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt", "TinyViT_BEiT",
+                        "TinyViT_DeiT_with_Inception", "TinyViT_DeiT_with_ModifiedInception"
                     ],
                     default="VanillaViT",
                     help="Which model architecture to use")
