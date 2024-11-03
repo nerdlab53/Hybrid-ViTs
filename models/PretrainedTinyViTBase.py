@@ -31,23 +31,26 @@ class PretrainedTinyViTBase(nn.Module):
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
-                
-        # Add custom head
+        
+        # Add custom head with proper dimensions
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(self.embed_dim),
-            nn.Linear(self.embed_dim, self.embed_dim * 2),
-            nn.BatchNorm1d(self.embed_dim * 2),
+            nn.Linear(self.embed_dim, self.embed_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(self.embed_dim * 2, num_classes)
+            nn.Linear(self.embed_dim, num_classes)
         )
         
         self.attention_weights = []
-        
+    
     def forward(self, x):
-        # Get features from backbone
-        features = self.backbone.forward_features(x)
+        # Get features from backbone (B, N, D)
+        x = self.backbone.forward_features(x)
         
         # Apply classification head
-        x = self.mlp_head(features)
-        return x 
+        # First ensure x is 2D for the linear layers (B, D)
+        if len(x.shape) == 3:
+            x = x[:, 0]  # Take CLS token
+        
+        x = self.mlp_head(x)
+        return x
