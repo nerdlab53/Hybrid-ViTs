@@ -19,7 +19,8 @@ class PretrainedTinyViTBase(nn.Module):
         model_args = {
             'pretrained': True,
             'num_classes': 0,  # Remove classification head
-            'in_chans': num_channels
+            'in_chans': num_channels,
+            'global_pool': ''  # Disable global pooling
         }
         
         # Add img_size only if needed (for ViT-like models)
@@ -42,8 +43,12 @@ class PretrainedTinyViTBase(nn.Module):
             for param in self.backbone.parameters():
                 param.requires_grad = False
         
+        # Global average pooling
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+        
         # Add custom head with proper dimensions
         self.mlp_head = nn.Sequential(
+            nn.Flatten(),  # Flatten the pooled features
             nn.LayerNorm(self.embed_dim),
             nn.Linear(self.embed_dim, self.embed_dim),
             nn.GELU(),
@@ -58,13 +63,9 @@ class PretrainedTinyViTBase(nn.Module):
         x = self.backbone.forward_features(x)
         
         # Handle different output formats
-        if isinstance(x, tuple):
-            x = x[0]  # Some models return tuple
-        
-        # Handle different tensor shapes
-        if len(x.shape) == 4:  # [B, H, W, C] format (Swin)
-            x = x.mean(dim=(1, 2))  # Global average pooling
-        elif len(x.shape) == 3:  # [B, N, C] format (ViT)
+        if len(x.shape) == 4:  # CNN-like output [B, C, H, W]
+            x = self.global_pool(x)
+        elif len(x.shape) == 3:  # Transformer-like output [B, N, C]
             x = x[:, 0]  # Take CLS token
             
         # Apply classification head
