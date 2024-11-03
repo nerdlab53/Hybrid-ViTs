@@ -286,12 +286,14 @@ def valid(args, model, writer, test_loader, global_step):
     return accuracy, eval_losses.avg
 
 def get_optimizer(args, model):
-    if args.model_type in ['VanillaViT', 'VanillaViT_with_Inception', 'VanillaViT_with_ModifiedInception']:
-        optimizer = torch.optim.AdamW(model.parameters(),  # Changed from SGD to AdamW
+    if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
+        return get_optimizer_for_deit(args, model)
+    elif args.model_type in ['VanillaViT', 'VanillaViT_with_Inception', 'VanillaViT_with_ModifiedInception']:
+        optimizer = torch.optim.AdamW(model.parameters(),
                                    lr=args.learning_rate,
                                    weight_decay=args.weight_decay,
                                    betas=(0.9, 0.999))
-    else:  # CNN models
+    else:
         optimizer = torch.optim.Adam(model.parameters(),
                                    lr=args.learning_rate,
                                    weight_decay=args.weight_decay)
@@ -379,11 +381,7 @@ def train(args, model, optimizer):
         )
 
     criterion = nn.CrossEntropyLoss()
-    scheduler = WarmupCosineScheduler(
-        optimizer,
-        warmup_steps=args.warmup_steps,
-        t_total=args.num_steps
-    )
+    scheduler = get_scheduler(args, optimizer, train_loader)
     
     # Initialize metrics
     train_losses = AverageMeter()
@@ -565,6 +563,56 @@ def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, ar
             scheduler.step()
         
         total_loss += loss.item() * steps_per_update
+
+def get_optimizer_for_deit(args, model):
+    # Separate parameters for different learning rates
+    inception_params = []
+    reduction_params = []
+    backbone_params = []
+    head_params = []
+    
+    for name, param in model.named_parameters():
+        if 'inception' in name:
+            inception_params.append(param)
+        elif 'reduction' in name:
+            reduction_params.append(param)
+        elif 'mlp_head' in name:
+            head_params.append(param)
+        else:
+            backbone_params.append(param)
+    
+    param_groups = [
+        {'params': inception_params, 'lr': args.learning_rate * 3},  # Higher LR for inception
+        {'params': reduction_params, 'lr': args.learning_rate * 2},  # Medium LR for reduction
+        {'params': backbone_params, 'lr': args.learning_rate},       # Base LR for backbone
+        {'params': head_params, 'lr': args.learning_rate * 2}        # Medium LR for head
+    ]
+    
+    optimizer = torch.optim.AdamW(
+        param_groups,
+        weight_decay=args.weight_decay,
+        betas=(0.9, 0.95)
+    )
+    
+    return optimizer
+
+def get_scheduler(args, optimizer, train_loader):
+    if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=[args.learning_rate * 3, args.learning_rate * 2, 
+                   args.learning_rate, args.learning_rate * 2],
+            steps_per_epoch=len(train_loader),
+            epochs=args.num_epochs,
+            pct_start=0.1
+        )
+    else:
+        scheduler = WarmupCosineScheduler(
+            optimizer,
+            warmup_steps=args.warmup_steps,
+            max_steps=args.num_steps
+        )
+    return scheduler
 
 def main():
     parser = argparse.ArgumentParser()
