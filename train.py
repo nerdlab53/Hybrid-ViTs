@@ -30,6 +30,7 @@ from models.TinyViT import TinyViT
 from models.TinyViT_with_Inception import TinyViT_with_Inception
 from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
 import copy
+from models.TinyViT_BEiT import TinyViT_BEiT
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,15 @@ def setup(args):
         model = MobileNet_for_Alzheimer(num_classes=args.num_classes)
     elif args.model_type == "ResNet50":
         model = ResNet50_for_Alzheimer(num_classes=args.num_classes)
+    elif args.model_type == "TinyViT_BEiT":
+        model = TinyViT_BEiT(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            num_classes=args.num_classes,
+            dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone
+        )
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
         
@@ -568,11 +578,13 @@ def main():
     parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"],
                        default="alzheimers", help="Which downstream task.")
     parser.add_argument("--model_type", 
-                    choices=["VanillaViT", "VanillaViT_with_Inception", 
-                            "VanillaViT_with_ModifiedInception", "ResNet50",
-                            "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
-                            "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception",
-                            "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt"],
+                    choices=[
+                        "VanillaViT", "VanillaViT_with_Inception",
+                        "VanillaViT_with_ModifiedInception", "ResNet50",
+                        "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
+                        "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception",
+                        "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt", "TinyViT_BEiT"
+                    ],
                     default="VanillaViT",
                     help="Which model architecture to use")
     parser.add_argument("--output_dir", default="output", type=str,
