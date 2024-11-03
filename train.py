@@ -13,6 +13,9 @@ from datetime import timedelta
 from models.VanillaViT import VanillaViT
 from models.VanillaViT_with_Inception import VanillaViT_with_Inception
 from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInceptionModule
+from models.TinyViT_DeiT import TinyViT_DeiT
+from models.TinyViT_Swin import TinyViT_Swin
+from models.TinyViT_ConvNeXt import TinyViT_ConvNeXt
 from models.densenet import DenseNet_for_Alzheimer
 from models.efficientnet import EfficientNet_for_Alzheimer
 from models.vgg import VGG_for_Alzheimer
@@ -139,6 +142,33 @@ def setup(args):
             num_heads=args.num_heads,
             mlp_dim=args.mlp_size,
             dropout=args.dropout
+        )
+    elif args.model_type == "TinyViT_DeiT":
+        model = TinyViT_DeiT(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            num_classes=args.num_classes,
+            dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone
+        )
+    elif args.model_type == "TinyViT_Swin":
+        model = TinyViT_Swin(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            num_classes=args.num_classes,
+            dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone
+        )
+    elif args.model_type == "TinyViT_ConvNeXt":
+        model = TinyViT_ConvNeXt(
+            img_size=args.img_size,
+            num_channels=args.num_channels,
+            patch_size=args.patch_size,
+            num_classes=args.num_classes,
+            dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone
         )
     elif args.model_type == "DenseNet121":
         model = DenseNet_for_Alzheimer(num_classes=args.num_classes)
