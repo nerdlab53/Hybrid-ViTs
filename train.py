@@ -162,19 +162,9 @@ def setup(args):
         betas=(0.9, 0.999)
     )
     
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=args.learning_rate,
-        epochs=args.epochs,
-        steps_per_epoch=len(train_loader),
-        pct_start=0.2,  # Warm-up for first 20% of training
-        div_factor=25,  # LR range: max_lr/25 to max_lr
-        final_div_factor=1e4
-    )
-    
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Total Parameters: \t{num_params:,}")
-    return args, model, optimizer, scheduler
+    return args, model, optimizer
 
 def set_seed(args):
     random.seed(args.seed)
@@ -289,7 +279,7 @@ class EarlyStopping:
             self.best_loss = val_loss
             self.counter = 0
 
-def train(args, model):
+def train(args, model, optimizer):
     """Training"""
     
     # Create output directory if it doesn't exist
@@ -329,7 +319,6 @@ def train(args, model):
         )
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = get_optimizer(args, model)
     scheduler = WarmupCosineScheduler(
         optimizer,
         warmup_steps=args.warmup_steps,
@@ -594,8 +583,8 @@ def main():
                    (args.local_rank, args.device, args.n_gpu, bool(args.local_rank != -1)))
 
     set_seed(args)
-    args, model = setup(args)
-    train(args, model)
+    args, model, optimizer = setup(args)
+    train(args, model, optimizer)
 
 if __name__ == "__main__":
     main()

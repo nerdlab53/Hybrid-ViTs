@@ -10,7 +10,7 @@ class TinyViT(nn.Module):
         img_size=224,
         num_channels=3,
         patch_size=32,
-        embedding_dim=192,  # Reduced from original
+        embeddingdim=192,  # Reduced from original
         dropout=0.1,
         num_heads=3,  # Fixed at 3 as requested
         mlp_size=768,  # Reduced from original
@@ -24,32 +24,32 @@ class TinyViT(nn.Module):
         self.patch_embedding = PatchEmbedding(
             in_channels=num_channels,
             patch_size=patch_size,
-            embeddingdim=embedding_dim
+            embeddingdim=embeddingdim
         )
         
         # Add batch norm after patch embedding
-        self.embedding_bn = nn.BatchNorm1d(embedding_dim)
+        self.embedding_bn = nn.BatchNorm1d(embeddingdim)
         
         num_patches = (img_size * img_size) // (patch_size * patch_size)
         
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embedding_dim))
-        self.pos_embedding = nn.Parameter(torch.zeros(1, num_patches + 1, embedding_dim))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embeddingdim))
+        self.pos_embedding = nn.Parameter(torch.zeros(1, num_patches + 1, embeddingdim))
         self.pos_drop = nn.Dropout(p=dropout)
         
         self.transformer_blocks = nn.ModuleList([
             TinyTransformerBlock(
-                embedding_dim,
+                embeddingdim,
                 num_heads,
                 mlp_size,
                 dropout
             ) for _ in range(num_transformer_layer)
         ])
         
-        self.norm = nn.LayerNorm(embedding_dim)
+        self.norm = nn.LayerNorm(embeddingdim)
         
         # Two-layer MLP head with batch norm
         self.mlp_head = nn.Sequential(
-            nn.Linear(embedding_dim, mlp_size),
+            nn.Linear(embeddingdim, mlp_size),
             nn.BatchNorm1d(mlp_size),
             nn.GELU(),
             nn.Dropout(dropout),
