@@ -92,10 +92,10 @@ def setup(args):
             img_size=args.img_size,
             num_channels=args.num_channels,
             patch_size=args.patch_size,
-            embedding_dim=192,  # Reduced dimension
-            num_heads=3,
-            mlp_size=768,
-            num_transformer_layer=3,  # Reduced to 3
+            embedding_dim=args.embeddingdim,
+            num_heads=args.num_heads,
+            mlp_size=args.mlp_size,
+            num_transformer_layer=args.num_transformer_layer,
             num_classes=args.num_classes
         )
     elif args.model_type == "VanillaViT_with_Inception":
@@ -130,11 +130,15 @@ def setup(args):
         )
     elif args.model_type == "TinyViT_with_ModifiedInception":
         model = TinyViT_with_ModifiedInception(
+            img_size=args.img_size,
+            patch_size=args.patch_size,
+            in_channels=args.num_channels,
             num_classes=args.num_classes,
-            dim=192,
-            depth=3,  # Reduced to 3
-            num_heads=3,
-            mlp_dim=768
+            dim=args.embeddingdim,
+            depth=args.num_transformer_layer,
+            num_heads=args.num_heads,
+            mlp_dim=args.mlp_size,
+            dropout=args.dropout
         )
     elif args.model_type == "DenseNet121":
         model = DenseNet_for_Alzheimer(num_classes=args.num_classes)

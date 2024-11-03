@@ -64,20 +64,21 @@ class TinyViT_with_Inception(nn.Module):
         self.attention_weights = []
 
     def forward(self, x):
-        B = x.shape[0]
-        
-        # Inception feature extraction
+        # Inception module
         x = self.inception(x)
         
-        # Reduction and reshape
+        # Reduction layer
         x = self.reduction(x)
+        
+        # Reshape and transpose
+        B = x.size(0)
         x = x.flatten(2).transpose(1, 2)
         
         # Add class token
         cls_token = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_token, x), dim=1)
         
-        # Add position embedding
+        # Add position embedding and dropout
         x = x + self.pos_embed
         x = self.pos_drop(x)
         
@@ -89,9 +90,10 @@ class TinyViT_with_Inception(nn.Module):
             x, attn = block(x)
             self.attention_weights.append(attn)
         
-        # Classification head
+        # Apply norm and get cls token
         x = self.norm(x)
         x = x[:, 0]
-        x = self.mlp_head(x)
         
-        return x 
+        # Classification head
+        x = self.mlp_head(x)
+        return x

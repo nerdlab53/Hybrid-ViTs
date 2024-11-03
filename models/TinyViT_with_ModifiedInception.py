@@ -39,6 +39,7 @@ class TinyViT_with_ModifiedInception(nn.Module):
         num_patches = (img_size // patch_size) ** 2
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, dim))
         self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
+        self.pos_drop = nn.Dropout(dropout)  # Add this line
         
         # Transformer blocks
         self.transformer_blocks = nn.ModuleList([
@@ -46,6 +47,9 @@ class TinyViT_with_ModifiedInception(nn.Module):
             for _ in range(depth)
         ])
         
+        # Add after transformer blocks, before MLP head
+        self.norm = nn.LayerNorm(dim)
+
         # MLP head with batch norm
         self.mlp_head = nn.Sequential(
             nn.LayerNorm(dim),

@@ -64,23 +64,22 @@ class TinyViT(nn.Module):
         self.attention_weights = []
 
     def forward(self, x):
-        B = x.shape[0]
-        
         # Patch embedding
         x = self.patch_embedding(x)
         
-        # Apply batch norm to embeddings
-        x = x.transpose(1, 2)
-        x = self.embedding_bn(x)
-        x = x.transpose(1, 2)
+        # Apply batch norm
+        B = x.size(0)
+        x = self.embedding_bn(x.transpose(1, 2)).transpose(1, 2)
         
-        # Add class token and position embedding
+        # Add class token
         cls_token = self.cls_token.expand(B, -1, -1)
         x = torch.cat((cls_token, x), dim=1)
+        
+        # Add position embedding and dropout
         x = x + self.pos_embedding
         x = self.pos_drop(x)
         
-        # Store attention weights for visualization
+        # Store attention weights
         self.attention_weights = []
         
         # Transformer blocks
@@ -88,9 +87,10 @@ class TinyViT(nn.Module):
             x, attn = block(x)
             self.attention_weights.append(attn)
         
-        # Classification head
+        # Apply norm and get cls token
         x = self.norm(x)
-        x = x[:, 0]  # Use CLS token
-        x = self.mlp_head(x)
+        x = x[:, 0]
         
-        return x 
+        # Classification head
+        x = self.mlp_head(x)
+        return x
