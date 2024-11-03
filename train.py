@@ -33,6 +33,7 @@ import copy
 from models.TinyViT_BEiT import TinyViT_BEiT
 from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
 from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
+from utils.advanced_training import GradientAccumulationWrapper, CyclicLRWithRestarts
 
 logger = logging.getLogger(__name__)
 
@@ -649,6 +650,41 @@ def get_scheduler(args, optimizer, train_loader):
             max_steps=args.num_steps
         )
     return scheduler
+
+def setup_advanced_training(args, model):
+    # Get layer-specific learning rates
+    if hasattr(model, 'get_layer_groups'):
+        param_groups = model.get_layer_groups()
+        base_lr = args.learning_rate
+        
+        # Apply learning rate multipliers
+        for group in param_groups:
+            group['lr'] = base_lr * group['lr_mult']
+            
+        optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
+    else:
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=args.learning_rate,
+            weight_decay=args.weight_decay
+        )
+    
+    # Setup gradient accumulation
+    grad_accum = GradientAccumulationWrapper(
+        model,
+        accumulation_steps=args.gradient_accumulation_steps,
+        max_grad_norm=args.max_grad_norm
+    )
+    
+    # Setup cyclic learning rate
+    scheduler = CyclicLRWithRestarts(
+        optimizer,
+        total_epochs=args.num_epochs,
+        cycles=3,
+        cycle_mult=2.0
+    )
+    
+    return optimizer, scheduler, grad_accum
 
 def main():
     parser = argparse.ArgumentParser()
