@@ -92,7 +92,7 @@ def setup(args):
             img_size=args.img_size,
             num_channels=args.num_channels,
             patch_size=args.patch_size,
-            embedding_dim=args.embeddingdim,
+            embeddingdim=args.embeddingdim,
             num_heads=args.num_heads,
             mlp_size=args.mlp_size,
             num_transformer_layer=args.num_transformer_layer,
