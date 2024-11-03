@@ -539,6 +539,10 @@ def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, ar
 def main():
     parser = argparse.ArgumentParser()
     # Add these arguments before the existing ones
+    parser.add_argument("--dropout", type=float, default=0.1,
+                       help="Dropout rate")
+    parser.add_argument("--unfreeze_backbone", action="store_true",
+                       help="Whether to unfreeze the pretrained backbone")
     parser.add_argument("--num_classes", type=int, default=4,
                        help="Number of classes in the dataset")
     parser.add_argument("--img_size", type=int, default=224,
@@ -564,13 +568,11 @@ def main():
     parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"],
                        default="alzheimers", help="Which downstream task.")
     parser.add_argument("--model_type", 
-                    choices=[
-                        "VanillaViT", "VanillaViT_with_Inception", 
-                        "VanillaViT_with_ModifiedInception", "ResNet50",
-                        "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
-                        "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception",
-                        "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt"
-                    ],
+                    choices=["VanillaViT", "VanillaViT_with_Inception", 
+                            "VanillaViT_with_ModifiedInception", "ResNet50",
+                            "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
+                            "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception",
+                            "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt"],
                     default="VanillaViT",
                     help="Which model architecture to use")
     parser.add_argument("--output_dir", default="output", type=str,
