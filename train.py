@@ -26,6 +26,7 @@ from utils.metrics_logger import MetricsLogger
 from models.TinyViT import TinyViT
 from models.TinyViT_with_Inception import TinyViT_with_Inception
 from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
+import copy
 
 logger = logging.getLogger(__name__)
 
@@ -149,9 +150,27 @@ def setup(args):
         raise ValueError(f"Unknown model type: {args.model_type}")
         
     model.to(args.device)
+    
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.learning_rate,
+        weight_decay=0.05,  # Increased from default
+        betas=(0.9, 0.999)
+    )
+    
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=args.learning_rate,
+        epochs=args.epochs,
+        steps_per_epoch=len(train_loader),
+        pct_start=0.2,  # Warm-up for first 20% of training
+        div_factor=25,  # LR range: max_lr/25 to max_lr
+        final_div_factor=1e4
+    )
+    
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Total Parameters: \t{num_params:,}")
-    return args, model
+    return args, model, optimizer, scheduler
 
 def set_seed(args):
     random.seed(args.seed)
@@ -224,6 +243,48 @@ def get_optimizer(args, model):
                                    weight_decay=args.weight_decay)
     return optimizer
 
+class Mixup:
+    def __init__(self, alpha=0.2):
+        self.alpha = alpha
+    
+    def __call__(self, batch, labels):
+        lam = np.random.beta(self.alpha, self.alpha)
+        batch_size = batch.size(0)
+        index = torch.randperm(batch_size).to(batch.device)
+        
+        mixed_batch = lam * batch + (1 - lam) * batch[index]
+        label_a, label_b = labels, labels[index]
+        return mixed_batch, label_a, label_b, lam
+
+class ModelEMA:
+    def __init__(self, model, decay=0.9999):
+        self.model = copy.deepcopy(model)
+        self.decay = decay
+        
+    def update(self, model):
+        with torch.no_grad():
+            for ema_p, p in zip(self.model.parameters(), model.parameters()):
+                ema_p.data.mul_(self.decay).add_(p.data, alpha=1 - self.decay)
+
+class EarlyStopping:
+    def __init__(self, patience=7, min_delta=0.001):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.stop = False
+        
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+
 def train(args, model):
     """Training"""
     
@@ -293,6 +354,10 @@ def train(args, model):
     
     # Training loop
     model.train()
+    model_ema = ModelEMA(model)
+    
+    early_stopping = EarlyStopping(patience=7, min_delta=0.001)
+    
     for epoch in range(args.num_epochs):
         train_losses.reset()
         train_acc.reset()
@@ -393,6 +458,12 @@ def train(args, model):
                    f'Train Acc={train_acc.avg:.4f}, '
                    f'Val Loss={val_loss:.4f}, '
                    f'Val Acc={val_acc:.4f}')
+        
+        model_ema.update(model)
+        
+        if early_stopping(val_loss):
+            logger.info("Early stopping")
+            break
 
     writer.close()
     logger.info(f"Best Accuracy for {model_name}: \t%f" % best_val_acc)
@@ -421,6 +492,26 @@ def validate(args, model, val_loader, criterion):
     
     model.train()
     return val_losses.avg, val_acc.avg
+
+def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, args):
+    mixup = Mixup(alpha=0.2)
+    model.train()
+    total_loss = 0
+    steps_per_update = 4  # Accumulate over 4 steps
+    optimizer.zero_grad()
+    
+    for idx, (images, labels) in enumerate(train_loader):
+        images, labels = images.to(device), labels.to(device)
+        outputs = model(images)
+        loss = criterion(outputs, labels) / steps_per_update
+        loss.backward()
+        
+        if (idx + 1) % steps_per_update == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+            scheduler.step()
+        
+        total_loss += loss.item() * steps_per_update
 
 def main():
     parser = argparse.ArgumentParser()
