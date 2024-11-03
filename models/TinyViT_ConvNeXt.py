@@ -1,4 +1,4 @@
-from PretrainedTinyViTBase import PretrainedTinyViTBase
+from .PretrainedTinyViTBase import PretrainedTinyViTBase
 class TinyViT_ConvNeXt(PretrainedTinyViTBase):
     def __init__(
         self,
