@@ -12,6 +12,9 @@ from models.efficientnet import EfficientNet_for_Alzheimer
 from models.vgg import VGG_for_Alzheimer
 from models.mobilenet import MobileNet_for_Alzheimer
 from utils.data_loader import load_alzheimers_data
+from models.TinyViT import TinyViT
+from models.TinyViT_with_Inception import TinyViT_with_Inception
+from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -111,7 +114,10 @@ def main():
         "DenseNet121": DenseNet_for_Alzheimer(),
         "EfficientNet-B0": EfficientNet_for_Alzheimer(),
         "VGG16_BN": VGG_for_Alzheimer(),
-        "MobileNetV2": MobileNet_for_Alzheimer()
+        "MobileNetV2": MobileNet_for_Alzheimer(),
+        "TinyViT": TinyViT(),
+        "TinyViT_with_Inception": TinyViT_with_Inception(),
+        "TinyViT_with_ModifiedInception": TinyViT_with_ModifiedInception()
     }
     
     results = []

@@ -545,11 +545,12 @@ def main():
     parser.add_argument("--dataset", choices=["cifar10", "cifar100", "alzheimers"],
                        default="alzheimers", help="Which downstream task.")
     parser.add_argument("--model_type", 
-                       choices=["VanillaViT", "VanillaViT_with_Inception", 
-                               "VanillaViT_with_ModifiedInception", "ResNet50",
-                               "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2"],
-                       default="VanillaViT",
-                       help="Which model architecture to use")
+                    choices=["VanillaViT", "VanillaViT_with_Inception", 
+                            "VanillaViT_with_ModifiedInception", "ResNet50",
+                            "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
+                            "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception"],
+                    default="VanillaViT",
+                    help="Which model architecture to use")
     parser.add_argument("--output_dir", default="output", type=str,
                        help="The output directory where checkpoints will be written.")
     parser.add_argument("--dataset_type", choices=["Original", "Augmented"],
