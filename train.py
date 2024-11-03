@@ -565,47 +565,83 @@ def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, ar
         total_loss += loss.item() * steps_per_update
 
 def get_optimizer_for_deit(args, model):
-    # Separate parameters for different learning rates
-    inception_params = []
-    reduction_params = []
-    backbone_params = []
-    head_params = []
-    
-    for name, param in model.named_parameters():
-        if 'inception' in name:
-            inception_params.append(param)
-        elif 'reduction' in name:
-            reduction_params.append(param)
-        elif 'mlp_head' in name:
-            head_params.append(param)
-        else:
-            backbone_params.append(param)
-    
-    param_groups = [
-        {'params': inception_params, 'lr': args.learning_rate * 3},  # Higher LR for inception
-        {'params': reduction_params, 'lr': args.learning_rate * 2},  # Medium LR for reduction
-        {'params': backbone_params, 'lr': args.learning_rate},       # Base LR for backbone
-        {'params': head_params, 'lr': args.learning_rate * 2}        # Medium LR for head
-    ]
-    
+    # Option 1: Single parameter group with higher learning rate
     optimizer = torch.optim.AdamW(
-        param_groups,
+        model.parameters(),
+        lr=args.learning_rate * 3,  # Higher learning rate
         weight_decay=args.weight_decay,
         betas=(0.9, 0.95)
     )
     
     return optimizer
 
+    # Option 2: If you want to keep different learning rates for different parts:
+    """
+    # Separate parameters for different learning rates
+    params = []
+    
+    # Add inception and reduction parameters with higher learning rate
+    inception_reduction_params = []
+    for name, param in model.named_parameters():
+        if any(x in name for x in ['inception', 'reduction']):
+            inception_reduction_params.append(param)
+    if inception_reduction_params:
+        params.append({
+            'params': inception_reduction_params,
+            'lr': args.learning_rate * 3
+        })
+    
+    # Add remaining parameters with base learning rate
+    other_params = []
+    for name, param in model.named_parameters():
+        if not any(x in name for x in ['inception', 'reduction']):
+            other_params.append(param)
+    if other_params:
+        params.append({
+            'params': other_params,
+            'lr': args.learning_rate
+        })
+    
+    optimizer = torch.optim.AdamW(
+        params,
+        weight_decay=args.weight_decay,
+        betas=(0.9, 0.95)
+    )
+    
+    return optimizer
+    """
+
 def get_scheduler(args, optimizer, train_loader):
     if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer,
-            max_lr=[args.learning_rate * 3, args.learning_rate * 2, 
-                   args.learning_rate, args.learning_rate * 2],
-            steps_per_epoch=len(train_loader),
-            epochs=args.num_epochs,
-            pct_start=0.1
-        )
+        # Get the number of parameter groups in the optimizer
+        num_groups = len(optimizer.param_groups)
+        
+        # If using a single parameter group
+        if num_groups == 1:
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer,
+                max_lr=args.learning_rate * 3,  # Higher max LR for faster convergence
+                steps_per_epoch=len(train_loader),
+                epochs=args.num_epochs,
+                pct_start=0.1,  # 10% warmup
+                div_factor=25,   # Initial LR = max_lr/25
+                final_div_factor=1e4  # Final LR = max_lr/10000
+            )
+        else:
+            # For multiple parameter groups
+            max_lrs = []
+            for group in optimizer.param_groups:
+                max_lrs.append(group['lr'])
+                
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer,
+                max_lr=max_lrs,
+                steps_per_epoch=len(train_loader),
+                epochs=args.num_epochs,
+                pct_start=0.1,
+                div_factor=25,
+                final_div_factor=1e4
+            )
     else:
         scheduler = WarmupCosineScheduler(
             optimizer,
