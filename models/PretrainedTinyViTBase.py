@@ -25,7 +25,10 @@ class PretrainedTinyViTBase(nn.Module):
         )
         
         # Get embedding dimension from backbone
-        self.embed_dim = self.backbone.embed_dim
+        if hasattr(self.backbone, 'num_features'):
+            self.embed_dim = self.backbone.num_features
+        else:
+            self.embed_dim = self.backbone.embed_dim
         
         # Freeze backbone if specified
         if freeze_backbone:
@@ -44,13 +47,19 @@ class PretrainedTinyViTBase(nn.Module):
         self.attention_weights = []
     
     def forward(self, x):
-        # Get features from backbone (B, N, D)
+        # Get features from backbone
         x = self.backbone.forward_features(x)
         
-        # Apply classification head
-        # First ensure x is 2D for the linear layers (B, D)
-        if len(x.shape) == 3:
-            x = x[:, 0]  # Take CLS token
+        # Handle different output formats
+        if isinstance(x, tuple):
+            x = x[0]  # Some models return tuple
         
+        # Handle different tensor shapes
+        if len(x.shape) == 4:  # [B, H, W, C] format (Swin)
+            x = x.mean(dim=(1, 2))  # Global average pooling
+        elif len(x.shape) == 3:  # [B, N, C] format (ViT)
+            x = x[:, 0]  # Take CLS token
+            
+        # Apply classification head
         x = self.mlp_head(x)
         return x

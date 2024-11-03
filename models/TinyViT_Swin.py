@@ -4,7 +4,7 @@ class TinyViT_Swin(PretrainedTinyViTBase):
         self,
         img_size=224,
         num_channels=3,
-        patch_size=16,
+        patch_size=4,
         num_classes=4,
         dropout=0.1,
         freeze_backbone=True
