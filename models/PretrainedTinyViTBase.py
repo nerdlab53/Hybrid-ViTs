@@ -6,22 +6,29 @@ class PretrainedTinyViTBase(nn.Module):
     def __init__(
         self,
         pretrained_model_name,
-        img_size=224,
+        img_size=None,
         num_channels=3,
-        patch_size=16,
+        patch_size=None,
         num_classes=4,
         dropout=0.1,
         freeze_backbone=True
     ):
         super().__init__()
         
-        # Load pretrained model
+        # Load pretrained model with only necessary parameters
+        model_args = {
+            'pretrained': True,
+            'num_classes': 0,  # Remove classification head
+            'in_chans': num_channels
+        }
+        
+        # Add img_size only if needed (for ViT-like models)
+        if img_size is not None:
+            model_args['img_size'] = img_size
+            
         self.backbone = timm.create_model(
             pretrained_model_name,
-            pretrained=True,
-            num_classes=0,  # Remove classification head
-            img_size=img_size,
-            in_chans=num_channels
+            **model_args
         )
         
         # Get embedding dimension from backbone

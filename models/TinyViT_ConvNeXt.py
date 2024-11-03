@@ -1,4 +1,5 @@
 from .PretrainedTinyViTBase import PretrainedTinyViTBase
+
 class TinyViT_ConvNeXt(PretrainedTinyViTBase):
     def __init__(
         self,
@@ -11,9 +12,9 @@ class TinyViT_ConvNeXt(PretrainedTinyViTBase):
     ):
         super().__init__(
             pretrained_model_name='convnext_tiny',
-            img_size=img_size,
+            img_size=None,
             num_channels=num_channels,
-            patch_size=patch_size,
+            patch_size=None,
             num_classes=num_classes,
             dropout=dropout,
             freeze_backbone=freeze_backbone
