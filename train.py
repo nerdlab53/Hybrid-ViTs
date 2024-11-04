@@ -33,8 +33,6 @@ import copy
 from models.TinyViT_BEiT import TinyViT_BEiT
 from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
 from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
-import math
-from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
 
 logger = logging.getLogger(__name__)
 
@@ -641,28 +639,27 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
             # Linear warmup
             lr_mult = float(step) / float(max(1, self.warmup_steps))
         else:
-            # Cosine learning rate decay
-            progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
-            lr_mult = max(0.0, 0.5 * (1. + math.cos(math.pi * progress)))
-        
-        return [base_lr * lr_mult for base_lr in self.base_lrs]
-
-def get_optimizer_for_advanced(args, model):
-    # Use layer-specific learning rates from model's get_layer_groups
-    param_groups = model.get_layer_groups()
-    base_lr = args.learning_rate
-    
-    # Apply learning rate multipliers
-    for group in param_groups:
-        group['lr'] = base_lr * group['lr_mult']
-    
-    optimizer = torch.optim.AdamW(
-        param_groups,
-        weight_decay=args.weight_decay,
-        betas=(0.9, 0.95)
-    )
-    
-    return optimizer
+            # For multiple parameter groups
+            max_lrs = []
+            for group in optimizer.param_groups:
+                max_lrs.append(group['lr'])
+                
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer,
+                max_lr=max_lrs,
+                steps_per_epoch=len(train_loader),
+                epochs=args.num_epochs,
+                pct_start=0.1,
+                div_factor=25,
+                final_div_factor=1e4
+            )
+    else:
+        scheduler = WarmupCosineScheduler(
+            optimizer,
+            warmup_steps=args.warmup_steps,
+            max_steps=args.num_steps
+        )
+    return scheduler
 
 def main():
     parser = argparse.ArgumentParser()
