@@ -217,27 +217,21 @@ def setup(args):
     elif args.model_type == "TinyViT_with_Inception_Advanced":
         model = TinyViT_with_Inception_Advanced(
             img_size=args.img_size,
+            num_channels=args.num_channels,
             patch_size=args.patch_size,
-            in_channels=args.num_channels,
             num_classes=args.num_classes,
-            dim=args.embeddingdim,
-            depth=args.num_transformer_layer,
-            num_heads=args.num_heads,
-            mlp_dim=args.mlp_size,
             dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone,
             gradient_checkpointing=True
         )
     elif args.model_type == "TinyViT_with_ModifiedInception_Advanced":
         model = TinyViT_with_ModifiedInception_Advanced(
             img_size=args.img_size,
+            num_channels=args.num_channels,
             patch_size=args.patch_size,
-            in_channels=args.num_channels,
             num_classes=args.num_classes,
-            dim=args.embeddingdim,
-            depth=args.num_transformer_layer,
-            num_heads=args.num_heads,
-            mlp_dim=args.mlp_size,
             dropout=args.dropout,
+            freeze_backbone=not args.unfreeze_backbone,
             gradient_checkpointing=True
         )
     else:
