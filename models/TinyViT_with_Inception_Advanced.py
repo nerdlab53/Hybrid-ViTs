@@ -31,8 +31,32 @@ class TinyViT_with_Inception_Advanced(TinyViT_with_Inception):
         
         # Enable gradient checkpointing for memory efficiency
         self.gradient_checkpointing = gradient_checkpointing
-        if gradient_checkpointing:
-            self.transformer_blocks.gradient_checkpointing_enable()
+            
+    def forward(self, x):
+        # Apply inception module
+        x = self.inception(x)
+        
+        # Reduce channels
+        x = self.reduction(x)
+        
+        # Reshape and project
+        B, C, H, W = x.shape
+        x = x.reshape(B, C, -1).permute(0, 2, 1)  # (B, N, C)
+        
+        # Apply transformer blocks with gradient checkpointing if enabled
+        if self.gradient_checkpointing and self.training:
+            for block in self.transformer_blocks:
+                x = torch.utils.checkpoint.checkpoint(block, x)[0]
+        else:
+            for block in self.transformer_blocks:
+                x = block(x)[0]
+        
+        # Global average pooling
+        x = x.mean(dim=1)
+        
+        # Classification head
+        x = self.mlp_head(x)
+        return x
             
     def get_layer_groups(self):
         return [
