@@ -40,6 +40,7 @@ class CyclicLRWithRestarts:
         self.total_epochs = total_epochs
         self.cycles = cycles
         self.cycle_mult = cycle_mult
+        self.current_epoch = 0
         
         # Calculate cycle lengths
         self.cycle_lengths = []
@@ -48,18 +49,44 @@ class CyclicLRWithRestarts:
             self.cycle_lengths.append(cycle_length)
             cycle_length = int(cycle_length * cycle_mult)
             
-    def get_lr(self, epoch):
+    def step(self):
+        """Update learning rate"""
+        self.current_epoch += 1
+        lr_mult = self.get_lr()
+        
+        # Update learning rate for all param groups
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = param_group['lr'] * lr_mult
+    
+    def get_lr(self):
+        """Calculate the learning rate multiplier"""
         # Find current cycle
         current_cycle = 0
-        epoch_in_cycle = epoch
+        epoch_in_cycle = self.current_epoch
         for length in self.cycle_lengths:
             if epoch_in_cycle < length:
                 break
             epoch_in_cycle -= length
             current_cycle += 1
             
+        # If we've exceeded all cycles, use the minimum learning rate
+        if current_cycle >= len(self.cycle_lengths):
+            return 0.1  # minimum learning rate multiplier
+            
         # Calculate position in cycle (0 to 1)
         pos = epoch_in_cycle / self.cycle_lengths[current_cycle]
         
         # Cosine annealing with warm restarts
-        return 0.5 * (1 + np.cos(np.pi * pos)) 
+        return 0.5 * (1 + np.cos(np.pi * pos))
+    
+    def state_dict(self):
+        """Returns the state of the scheduler as a :class:`dict`."""
+        return {
+            'current_epoch': self.current_epoch,
+            'cycle_lengths': self.cycle_lengths,
+        }
+
+    def load_state_dict(self, state_dict):
+        """Loads the schedulers state."""
+        self.current_epoch = state_dict['current_epoch']
+        self.cycle_lengths = state_dict['cycle_lengths']
