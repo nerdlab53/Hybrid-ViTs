@@ -1,63 +1,58 @@
 import torch
 import torch.nn as nn
 from models.inception_modules import TinyModifiedInceptionModule
-from .TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
+from .PretrainedTinyViTBase import PretrainedTinyViTBase
 
-class TinyViT_with_ModifiedInception_Advanced(TinyViT_with_ModifiedInception):
+class TinyViT_with_ModifiedInception_Advanced(PretrainedTinyViTBase):
     def __init__(
         self,
         img_size=224,
-        patch_size=32,
-        in_channels=3,
+        num_channels=3,
+        patch_size=16,
         num_classes=4,
-        dim=192,
-        depth=4,
-        num_heads=3,
-        mlp_dim=768,
         dropout=0.1,
+        freeze_backbone=False,  # Default to not freezing for fine-tuning
         gradient_checkpointing=True
     ):
         super().__init__(
+            pretrained_model_name='deit_tiny_patch16_224',
             img_size=img_size,
+            num_channels=num_channels,
             patch_size=patch_size,
-            in_channels=in_channels,
             num_classes=num_classes,
-            dim=dim,
-            depth=depth,
-            num_heads=num_heads,
-            mlp_dim=mlp_dim,
-            dropout=dropout
+            dropout=dropout,
+            freeze_backbone=freeze_backbone
         )
         
-        # Enable gradient checkpointing for memory efficiency
+        # Add Modified Inception module before the backbone
+        self.inception = TinyModifiedInceptionModule(in_channels=num_channels)
+        
+        # Add a reduction layer after inception
+        self.reduction = nn.Sequential(
+            nn.Conv2d(176, num_channels, kernel_size=1),
+            nn.BatchNorm2d(num_channels),
+            nn.GELU()
+        )
+        
+        # Enable gradient checkpointing
         self.gradient_checkpointing = gradient_checkpointing
-            
+        
     def forward(self, x):
         # Apply inception module
         x = self.inception(x)
         
-        # Project to embedding dimension
-        x = self.linear_proj(x.flatten(2).transpose(1, 2))
+        # Reduce channels back to original input size
+        x = self.reduction(x)
         
-        # Apply transformer blocks with gradient checkpointing if enabled
+        # Get the pretrained backbone
         if self.gradient_checkpointing and self.training:
-            for block in self.transformer_blocks:
-                x = torch.utils.checkpoint.checkpoint(block, x)[0]
-        else:
-            for block in self.transformer_blocks:
-                x = block(x)[0]
+            return torch.utils.checkpoint.checkpoint(super().forward, x)
+        return super().forward(x)
         
-        # Global average pooling
-        x = x.mean(dim=1)
-        
-        # Classification head
-        x = self.mlp_head(x)
-        return x
-            
     def get_layer_groups(self):
         return [
-            {'params': self.inception.parameters(), 'lr_mult': 5.0},
-            {'params': self.linear_proj.parameters(), 'lr_mult': 3.0},
-            {'params': self.transformer_blocks.parameters(), 'lr_mult': 1.0},
-            {'params': self.mlp_head.parameters(), 'lr_mult': 2.0}
+            {'params': self.inception.parameters(), 'lr_mult': 5.0},  # Highest LR
+            {'params': self.reduction.parameters(), 'lr_mult': 3.0},  # High LR
+            {'params': self.backbone.parameters(), 'lr_mult': 1.0},  # Base LR
+            {'params': self.head.parameters(), 'lr_mult': 2.0}  # Medium LR
         ]

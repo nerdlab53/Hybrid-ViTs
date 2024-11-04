@@ -652,7 +652,7 @@ def get_optimizer_for_deit(args, model):
 def get_scheduler(args, optimizer, train_loader):
     num_training_steps = args.num_epochs * len(train_loader)
     num_warmup_steps = int(args.warmup_ratio * num_training_steps)
-    
+    # Get layer-specific learning rates
     if args.model_type in ["TinyViT_with_Inception_Advanced", "TinyViT_with_ModifiedInception_Advanced"]:
         # Use CyclicLRWithRestarts for advanced models
         scheduler = CyclicLRWithRestarts(
