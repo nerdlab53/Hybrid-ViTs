@@ -36,6 +36,7 @@ from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_Modifie
 from utils.advanced_training import GradientAccumulationWrapper, CyclicLRWithRestarts
 from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
 from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -641,42 +642,25 @@ def get_optimizer_for_deit(args, model):
     """
 
 def get_scheduler(args, optimizer, train_loader):
-    if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
-        # Get the number of parameter groups in the optimizer
-        num_groups = len(optimizer.param_groups)
-        
-        # If using a single parameter group
-        if num_groups == 1:
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(
-                optimizer,
-                max_lr=args.learning_rate * 3,  # Higher max LR for faster convergence
-                steps_per_epoch=len(train_loader),
-                epochs=args.num_epochs,
-                pct_start=0.1,  # 10% warmup
-                div_factor=25,   # Initial LR = max_lr/25
-                final_div_factor=1e4  # Final LR = max_lr/10000
-            )
-        else:
-            # For multiple parameter groups
-            max_lrs = []
-            for group in optimizer.param_groups:
-                max_lrs.append(group['lr'])
-                
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(
-                optimizer,
-                max_lr=max_lrs,
-                steps_per_epoch=len(train_loader),
-                epochs=args.num_epochs,
-                pct_start=0.1,
-                div_factor=25,
-                final_div_factor=1e4
-            )
-    else:
-        scheduler = WarmupCosineScheduler(
+    num_training_steps = args.num_epochs * len(train_loader)
+    num_warmup_steps = int(args.warmup_ratio * num_training_steps)
+    
+    if args.model_type in ["TinyViT_with_Inception_Advanced", "TinyViT_with_ModifiedInception_Advanced"]:
+        # Use CyclicLRWithRestarts for advanced models
+        scheduler = CyclicLRWithRestarts(
             optimizer,
-            warmup_steps=args.warmup_steps,
-            max_steps=args.num_steps
+            total_epochs=args.num_epochs,
+            cycles=3,
+            cycle_mult=2.0
         )
+    else:
+        # Use WarmupCosineScheduler for other models
+        scheduler = WarmupCosineScheduler(
+            optimizer=optimizer,
+            warmup_steps=num_warmup_steps,
+            t_total=num_training_steps
+        )
+    
     return scheduler
 
 def setup_advanced_training(args, model):
@@ -713,6 +697,24 @@ def setup_advanced_training(args, model):
     )
     
     return optimizer, scheduler, grad_accum
+
+class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
+    def __init__(self, optimizer, warmup_steps, t_total, last_epoch=-1):
+        self.warmup_steps = warmup_steps
+        self.t_total = t_total
+        super(WarmupCosineScheduler, self).__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        step = self.last_epoch
+        if step < self.warmup_steps:
+            # Linear warmup
+            lr_mult = float(step) / float(max(1, self.warmup_steps))
+        else:
+            # Cosine learning rate decay
+            progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
+            lr_mult = max(0.0, 0.5 * (1. + math.cos(math.pi * progress)))
+
+        return [base_lr * lr_mult for base_lr in self.base_lrs]
 
 def main():
     parser = argparse.ArgumentParser()
