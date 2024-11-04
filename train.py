@@ -323,6 +323,8 @@ def valid(args, model, writer, test_loader, global_step):
 def get_optimizer(args, model):
     if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
         return get_optimizer_for_deit(args, model)
+    elif args.model_type in ['TinyViT_with_Inception_Advanced', 'TinyViT_with_ModifiedInception_Advanced']:
+        return get_optimizer_for_advanced(args, model)
     elif args.model_type in ['VanillaViT', 'VanillaViT_with_Inception', 'VanillaViT_with_ModifiedInception']:
         optimizer = torch.optim.AdamW(model.parameters(),
                                    lr=args.learning_rate,
@@ -606,7 +608,6 @@ def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, ar
         total_loss += loss.item() * steps_per_update
 
 def get_optimizer_for_deit(args, model):
-    # Option 1: Single parameter group with higher learning rate
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate * 3,  # Higher learning rate
@@ -615,42 +616,6 @@ def get_optimizer_for_deit(args, model):
     )
     
     return optimizer
-
-    # Option 2: If you want to keep different learning rates for different parts:
-    """
-    # Separate parameters for different learning rates
-    params = []
-    
-    # Add inception and reduction parameters with higher learning rate
-    inception_reduction_params = []
-    for name, param in model.named_parameters():
-        if any(x in name for x in ['inception', 'reduction']):
-            inception_reduction_params.append(param)
-    if inception_reduction_params:
-        params.append({
-            'params': inception_reduction_params,
-            'lr': args.learning_rate * 3
-        })
-    
-    # Add remaining parameters with base learning rate
-    other_params = []
-    for name, param in model.named_parameters():
-        if not any(x in name for x in ['inception', 'reduction']):
-            other_params.append(param)
-    if other_params:
-        params.append({
-            'params': other_params,
-            'lr': args.learning_rate
-        })
-    
-    optimizer = torch.optim.AdamW(
-        params,
-        weight_decay=args.weight_decay,
-        betas=(0.9, 0.95)
-    )
-    
-    return optimizer
-    """
 
 def get_scheduler(args, optimizer, train_loader):
     num_training_steps = args.num_epochs * len(train_loader)
@@ -669,7 +634,7 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
         self.warmup_steps = warmup_steps
         self.t_total = t_total
         super(WarmupCosineScheduler, self).__init__(optimizer, last_epoch)
-
+    params = []
     def get_lr(self):
         step = self.last_epoch
         if step < self.warmup_steps:
@@ -679,8 +644,25 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
             # Cosine learning rate decay
             progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
             lr_mult = max(0.0, 0.5 * (1. + math.cos(math.pi * progress)))
-
+            'lr': args.learning_rate * 3
         return [base_lr * lr_mult for base_lr in self.base_lrs]
+
+def get_optimizer_for_advanced(args, model):
+    # Use layer-specific learning rates from model's get_layer_groups
+    param_groups = model.get_layer_groups()
+    base_lr = args.learning_rate
+    
+    # Apply learning rate multipliers
+    for group in param_groups:
+        group['lr'] = base_lr * group['lr_mult']
+    
+    optimizer = torch.optim.AdamW(
+        param_groups,
+        weight_decay=args.weight_decay,
+        betas=(0.9, 0.95)
+    )
+    
+    return optimizer
 
 def main():
     parser = argparse.ArgumentParser()
