@@ -248,6 +248,28 @@ def setup(args):
     
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     logger.info(f"Total Parameters: \t{num_params:,}")
+    
+    # Enable torch.backends optimizations
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    
+    # Enable automatic mixed precision
+    if args.fp16:
+        model = model.half()
+        for layer in model.modules():
+            if isinstance(layer, (nn.BatchNorm2d, nn.LayerNorm)):
+                layer.float()
+    
+    # Compile the model
+    if hasattr(torch, 'compile'):
+        model = torch.compile(
+            model,
+            mode="reduce-overhead",
+            fullgraph=True,
+            dynamic=True
+        )
+    
     return args, model, optimizer
 
 def set_seed(args):
@@ -789,6 +811,14 @@ def main():
     parser.add_argument("--save_steps", type=int, default=100)
     parser.add_argument("--logging_steps", type=int, default=10)
 
+    # Add optimization arguments
+    parser.add_argument("--num_workers", type=int, default=4,
+                       help="Number of data loading workers")
+    parser.add_argument("--pin_memory", action="store_true",
+                       help="Pin memory for faster data transfer")
+    parser.add_argument("--prefetch_factor", type=int, default=2,
+                       help="Number of batches to prefetch")
+    
     args = parser.parse_args()
 
     if args.local_rank == -1:

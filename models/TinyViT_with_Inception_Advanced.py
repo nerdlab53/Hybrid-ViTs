@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 from models.inception_modules import TinyInceptionModule
 from .PretrainedTinyViTBase import PretrainedTinyViTBase
+import torch._dynamo
+from torch._dynamo import optimize
+import torch.compile
 
 class TinyViT_with_Inception_Advanced(PretrainedTinyViTBase):
     def __init__(
@@ -11,7 +14,7 @@ class TinyViT_with_Inception_Advanced(PretrainedTinyViTBase):
         patch_size=16,
         num_classes=4,
         dropout=0.1,
-        freeze_backbone=False,  # Default to not freezing for fine-tuning
+        freeze_backbone=True,  # Default to not freezing for fine-tuning
         gradient_checkpointing=True
     ):
         super().__init__(
@@ -36,6 +39,14 @@ class TinyViT_with_Inception_Advanced(PretrainedTinyViTBase):
         
         # Enable gradient checkpointing
         self.gradient_checkpointing = gradient_checkpointing
+        
+        # Enable torch.compile for faster training
+        self.forward = torch.compile(
+            self.forward,
+            mode="reduce-overhead",
+            fullgraph=True,
+            dynamic=True
+        )
         
     def forward(self, x):
         # Apply inception module
