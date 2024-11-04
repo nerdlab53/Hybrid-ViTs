@@ -634,7 +634,7 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
         self.warmup_steps = warmup_steps
         self.t_total = t_total
         super(WarmupCosineScheduler, self).__init__(optimizer, last_epoch)
-    params = []
+    
     def get_lr(self):
         step = self.last_epoch
         if step < self.warmup_steps:
@@ -644,7 +644,7 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
             # Cosine learning rate decay
             progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
             lr_mult = max(0.0, 0.5 * (1. + math.cos(math.pi * progress)))
-            'lr': args.learning_rate * 3
+        
         return [base_lr * lr_mult for base_lr in self.base_lrs]
 
 def get_optimizer_for_advanced(args, model):
