@@ -33,12 +33,8 @@ import copy
 from models.TinyViT_BEiT import TinyViT_BEiT
 from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
 from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
-from utils.advanced_training import GradientAccumulationWrapper, CyclicLRWithRestarts
-from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
-from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
 import math
-import torch._dynamo
-torch._dynamo.config.suppress_errors = True
+from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
 
 logger = logging.getLogger(__name__)
 
@@ -262,15 +258,6 @@ def setup(args):
         for layer in model.modules():
             if isinstance(layer, (nn.BatchNorm2d, nn.LayerNorm)):
                 layer.float()
-    
-    # Compile the model
-    if hasattr(torch, 'compile'):
-        model = torch.compile(
-            model,
-            mode="reduce-overhead",
-            fullgraph=True,
-            dynamic=True
-        )
     
     return args, model, optimizer
 
@@ -512,11 +499,6 @@ def train(args, model, optimizer):
                     'acc': f'{train_acc.avg:.4f}'
                 })
                 
-                # Log learning rate
-                if isinstance(scheduler, CyclicLRWithRestarts):
-                    current_lr = scheduler.get_lr()[0]  # Get first group's LR
-                else:
-                    current_lr = scheduler.get_last_lr()[0]  # For torch schedulers
                 writer.add_scalar("train/lr", current_lr, global_step=step)
                 
                 writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
@@ -670,59 +652,14 @@ def get_optimizer_for_deit(args, model):
 def get_scheduler(args, optimizer, train_loader):
     num_training_steps = args.num_epochs * len(train_loader)
     num_warmup_steps = int(args.warmup_ratio * num_training_steps)
-    # Get layer-specific learning rates
-    if args.model_type in ["TinyViT_with_Inception_Advanced", "TinyViT_with_ModifiedInception_Advanced"]:
-        # Use CyclicLRWithRestarts for advanced models
-        scheduler = CyclicLRWithRestarts(
-            optimizer,
-            total_epochs=args.num_epochs,
-            cycles=3,
-            cycle_mult=2.0
-        )
-    else:
-        # Use WarmupCosineScheduler for other models
-        scheduler = WarmupCosineScheduler(
-            optimizer=optimizer,
-            warmup_steps=num_warmup_steps,
-            t_total=num_training_steps
-        )
+    
+    scheduler = WarmupCosineScheduler(
+        optimizer=optimizer,
+        warmup_steps=num_warmup_steps,
+        t_total=num_training_steps
+    )
     
     return scheduler
-
-def setup_advanced_training(args, model):
-    # Get layer-specific learning rates
-    if hasattr(model, 'get_layer_groups'):
-        param_groups = model.get_layer_groups()
-        base_lr = args.learning_rate
-        
-        # Apply learning rate multipliers
-        for group in param_groups:
-            group['lr'] = base_lr * group['lr_mult']
-            
-        optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
-    else:
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=args.learning_rate,
-            weight_decay=args.weight_decay
-        )
-    
-    # Setup gradient accumulation
-    grad_accum = GradientAccumulationWrapper(
-        model,
-        accumulation_steps=args.gradient_accumulation_steps,
-        max_grad_norm=args.max_grad_norm
-    )
-    
-    # Setup cyclic learning rate
-    scheduler = CyclicLRWithRestarts(
-        optimizer,
-        total_epochs=args.num_epochs,
-        cycles=3,
-        cycle_mult=2.0
-    )
-    
-    return optimizer, scheduler, grad_accum
 
 class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup_steps, t_total, last_epoch=-1):
