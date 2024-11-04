@@ -436,8 +436,15 @@ def train(args, model, optimizer):
                     torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
 
-    model.train()
+    model.zero_grad()
+    set_seed(args)
     scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
+    
+    # Training loop
+    model.train()
+    model_ema = ModelEMA(model)
+    
+    early_stopping = EarlyStopping(patience=7, min_delta=0.001)
     
     for epoch in range(args.num_epochs):
         train_losses.reset()
@@ -445,57 +452,61 @@ def train(args, model, optimizer):
         
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.num_epochs}')
         for step, (images, labels) in enumerate(pbar):
-            images = images.to(args.device)
-            labels = labels.to(args.device)
+            images = images.to(args.device, non_blocking=True)
+            labels = labels.to(args.device, non_blocking=True)
             
-            # Clear gradients
-            optimizer.zero_grad()
+            # Clear memory cache periodically
+            if step % 10 == 0:
+                torch.cuda.empty_cache()
             
             # Forward pass with mixed precision
             if args.fp16:
                 with torch.cuda.amp.autocast():
                     outputs = model(images)
                     loss = criterion(outputs, labels)
-                
-                # Scale loss and perform backward pass
-                scaler.scale(loss).backward()
-                
-                # Skip gradient unscaling and clipping for FP16
-                # Just step the optimizer with the scaler
-                scaler.step(optimizer)
-                scaler.update()
             else:
-                # Regular forward pass
                 outputs = model(images)
                 loss = criterion(outputs, labels)
-                
-                # Regular backward pass
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                optimizer.step()
             
-            # Update metrics
-            with torch.no_grad():
+            # Backward pass
+            if args.gradient_accumulation_steps > 1:
+                loss = loss / args.gradient_accumulation_steps
+                
+            if args.fp16:
+                scaler.scale(loss).backward()
+            else:
+                loss.backward()
+            
+            if (step + 1) % args.gradient_accumulation_steps == 0:
+                if args.fp16:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+                    optimizer.step()
+                
+                optimizer.zero_grad()
+                
+                # Update metrics
                 _, predicted = torch.max(outputs.data, 1)
                 accuracy = (predicted == labels).float().mean()
                 train_losses.update(loss.item())
                 train_acc.update(accuracy.item())
-            
-            # Update progress bar
-            pbar.set_postfix({
-                'loss': f'{train_losses.avg:.4f}',
-                'acc': f'{train_acc.avg:.4f}'
-            })
-            
-            # Log metrics
-            if step % args.logging_steps == 0:
+                
+                # Update progress bar
+                pbar.set_postfix({
+                    'loss': f'{train_losses.avg:.4f}',
+                    'acc': f'{train_acc.avg:.4f}'
+                })
+                
+                # Log learning rate - corrected version
                 current_lr = optimizer.param_groups[0]['lr']
                 writer.add_scalar("train/lr", current_lr, global_step=step)
+                
                 writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
                 writer.add_scalar("train/accuracy", scalar_value=train_acc.avg, global_step=step)
-            
-            if scheduler is not None:
-                scheduler.step()
         
         # Step the scheduler at epoch end
         if scheduler is not None:
@@ -541,6 +552,8 @@ def train(args, model, optimizer):
                    f'Train Acc={train_acc.avg:.4f}, '
                    f'Val Loss={val_loss:.4f}, '
                    f'Val Acc={val_acc:.4f}')
+        
+        model_ema.update(model)
         
         if early_stopping(val_loss):
             logger.info("Early stopping")
