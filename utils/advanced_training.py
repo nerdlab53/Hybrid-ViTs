@@ -41,6 +41,7 @@ class CyclicLRWithRestarts:
         self.cycles = cycles
         self.cycle_mult = cycle_mult
         self.current_epoch = 0
+        self.base_lrs = [group['lr'] for group in optimizer.param_groups]
         
         # Calculate cycle lengths
         self.cycle_lengths = []
@@ -52,13 +53,13 @@ class CyclicLRWithRestarts:
     def step(self):
         """Update learning rate"""
         self.current_epoch += 1
-        lr_mult = self.get_lr()
+        lr_mult = self._get_lr_multiplier()
         
         # Update learning rate for all param groups
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = param_group['lr'] * lr_mult
+        for param_group, base_lr in zip(self.optimizer.param_groups, self.base_lrs):
+            param_group['lr'] = base_lr * lr_mult
     
-    def get_lr(self):
+    def _get_lr_multiplier(self):
         """Calculate the learning rate multiplier"""
         # Find current cycle
         current_cycle = 0
@@ -79,14 +80,20 @@ class CyclicLRWithRestarts:
         # Cosine annealing with warm restarts
         return 0.5 * (1 + np.cos(np.pi * pos))
     
+    def get_lr(self):
+        """Returns current learning rates"""
+        return [group['lr'] for group in self.optimizer.param_groups]
+    
     def state_dict(self):
         """Returns the state of the scheduler as a :class:`dict`."""
         return {
             'current_epoch': self.current_epoch,
             'cycle_lengths': self.cycle_lengths,
+            'base_lrs': self.base_lrs
         }
 
     def load_state_dict(self, state_dict):
         """Loads the schedulers state."""
         self.current_epoch = state_dict['current_epoch']
         self.cycle_lengths = state_dict['cycle_lengths']
+        self.base_lrs = state_dict['base_lrs']

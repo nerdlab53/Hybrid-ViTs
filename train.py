@@ -481,7 +481,6 @@ def train(args, model, optimizer):
                     optimizer.step()
                 
                 optimizer.zero_grad()
-                scheduler.step()
                 
                 # Update metrics
                 _, predicted = torch.max(outputs.data, 1)
@@ -495,9 +494,18 @@ def train(args, model, optimizer):
                     'acc': f'{train_acc.avg:.4f}'
                 })
                 
+                # Log learning rate
+                if isinstance(scheduler, CyclicLRWithRestarts):
+                    current_lr = scheduler.get_lr()[0]  # Get first group's LR
+                else:
+                    current_lr = scheduler.get_last_lr()[0]  # For torch schedulers
+                writer.add_scalar("train/lr", current_lr, global_step=step)
+                
                 writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
-                writer.add_scalar("train/lr", scalar_value=scheduler.get_lr()[0], global_step=step)
                 writer.add_scalar("train/accuracy", scalar_value=train_acc.avg, global_step=step)
+        
+        # Step the scheduler at epoch end
+        scheduler.step()
         
         # Validation phase
         val_loss, val_acc = validate(args, model, val_loader, criterion)
