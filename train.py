@@ -34,6 +34,8 @@ from models.TinyViT_BEiT import TinyViT_BEiT
 from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
 from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
 from utils.advanced_training import GradientAccumulationWrapper, CyclicLRWithRestarts
+from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
+from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +212,32 @@ def setup(args):
             num_classes=args.num_classes,
             dropout=args.dropout,
             freeze_backbone=not args.unfreeze_backbone
+        )
+    elif args.model_type == "TinyViT_with_Inception_Advanced":
+        model = TinyViT_with_Inception_Advanced(
+            img_size=args.img_size,
+            patch_size=args.patch_size,
+            in_channels=args.num_channels,
+            num_classes=args.num_classes,
+            dim=args.embeddingdim,
+            depth=args.num_transformer_layer,
+            num_heads=args.num_heads,
+            mlp_dim=args.mlp_size,
+            dropout=args.dropout,
+            gradient_checkpointing=True
+        )
+    elif args.model_type == "TinyViT_with_ModifiedInception_Advanced":
+        model = TinyViT_with_ModifiedInception_Advanced(
+            img_size=args.img_size,
+            patch_size=args.patch_size,
+            in_channels=args.num_channels,
+            num_classes=args.num_classes,
+            dim=args.embeddingdim,
+            depth=args.num_transformer_layer,
+            num_heads=args.num_heads,
+            mlp_dim=args.mlp_size,
+            dropout=args.dropout,
+            gradient_checkpointing=True
         )
     else:
         raise ValueError(f"Unknown model type: {args.model_type}")
@@ -724,7 +752,9 @@ def main():
                         "DenseNet121", "EfficientNet", "VGG16", "MobileNetV2",
                         "TinyViT", "TinyViT_with_Inception", "TinyViT_with_ModifiedInception",
                         "TinyViT_DeiT", "TinyViT_Swin", "TinyViT_ConvNeXt", "TinyViT_BEiT",
-                        "TinyViT_DeiT_with_Inception", "TinyViT_DeiT_with_ModifiedInception"
+                        "TinyViT_DeiT_with_Inception", "TinyViT_DeiT_with_ModifiedInception",
+                        "TinyViT_with_Inception_Advanced",
+                        "TinyViT_with_ModifiedInception_Advanced"
                     ],
                     default="VanillaViT",
                     help="Which model architecture to use")
