@@ -499,13 +499,16 @@ def train(args, model, optimizer):
                     'acc': f'{train_acc.avg:.4f}'
                 })
                 
+                # Log learning rate - corrected version
+                current_lr = optimizer.param_groups[0]['lr']
                 writer.add_scalar("train/lr", current_lr, global_step=step)
                 
                 writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
                 writer.add_scalar("train/accuracy", scalar_value=train_acc.avg, global_step=step)
         
         # Step the scheduler at epoch end
-        scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
         
         # Validation phase
         val_loss, val_acc = validate(args, model, val_loader, criterion)
