@@ -741,6 +741,8 @@ def main():
                        help="Number of attention heads")
     parser.add_argument("--val_split", type=float, default=0.1,
                        help="Fraction of training data to use for validation")
+    parser.add_argument("--warmup_ratio", type=float, default=0.1,
+                       help="Ratio of total training steps to use for warmup")
     
     # Existing arguments
     parser.add_argument("--name", required=True,
