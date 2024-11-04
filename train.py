@@ -460,11 +460,8 @@ def train(args, model, optimizer):
                 # Scale loss and perform backward pass
                 scaler.scale(loss).backward()
                 
-                # Unscale gradients and clip
-                scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                
-                # Step optimizer and update scaler
+                # Skip gradient unscaling and clipping for FP16
+                # Just step the optimizer with the scaler
                 scaler.step(optimizer)
                 scaler.update()
             else:
@@ -478,10 +475,11 @@ def train(args, model, optimizer):
                 optimizer.step()
             
             # Update metrics
-            _, predicted = torch.max(outputs.data, 1)
-            accuracy = (predicted == labels).float().mean()
-            train_losses.update(loss.item())
-            train_acc.update(accuracy.item())
+            with torch.no_grad():
+                _, predicted = torch.max(outputs.data, 1)
+                accuracy = (predicted == labels).float().mean()
+                train_losses.update(loss.item())
+                train_acc.update(accuracy.item())
             
             # Update progress bar
             pbar.set_postfix({
@@ -543,8 +541,6 @@ def train(args, model, optimizer):
                    f'Train Acc={train_acc.avg:.4f}, '
                    f'Val Loss={val_loss:.4f}, '
                    f'Val Acc={val_acc:.4f}')
-        
-        model_ema.update(model)
         
         if early_stopping(val_loss):
             logger.info("Early stopping")
