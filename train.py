@@ -37,6 +37,8 @@ from utils.advanced_training import GradientAccumulationWrapper, CyclicLRWithRes
 from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
 from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
 import math
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
 
 logger = logging.getLogger(__name__)
 

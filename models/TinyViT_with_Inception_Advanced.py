@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 from models.inception_modules import TinyInceptionModule
 from .PretrainedTinyViTBase import PretrainedTinyViTBase
-import torch._dynamo
-from torch._dynamo import optimize
+
+# Add this line right after imports
+torch._dynamo.config.suppress_errors = True
 
 class TinyViT_with_Inception_Advanced(PretrainedTinyViTBase):
     def __init__(
@@ -38,6 +39,9 @@ class TinyViT_with_Inception_Advanced(PretrainedTinyViTBase):
         
         # Enable gradient checkpointing
         self.gradient_checkpointing = gradient_checkpointing
+        
+        # Disable compilation for now
+        torch._dynamo.config.suppress_errors = True
         
     def forward(self, x):
         # Apply inception module
