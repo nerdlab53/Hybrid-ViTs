@@ -10,11 +10,11 @@ from torchvision import datasets, transforms
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from datetime import timedelta
-from models.VanillaViT import VanillaViT
-from models.VanillaViT_with_Inception import VanillaViT_with_Inception
-from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInceptionModule
+# from models.VanillaViT import VanillaViT
+# from models.VanillaViT_with_Inception import VanillaViT_with_Inception
+# from models.VanillaViT_with_ModifiedInception import VanillaViT_with_ModifiedInceptionModule
 from models.TinyViT_DeiT import TinyViT_DeiT
-from models.TinyViT_Swin import TinyViT_Swin
+# from models.TinyViT_Swin import TinyViT_Swin
 from models.TinyViT_ConvNeXt import TinyViT_ConvNeXt
 from models.densenet import DenseNet_for_Alzheimer
 from models.efficientnet import EfficientNet_for_Alzheimer
@@ -27,14 +27,14 @@ from dataset_utils.alzheimers_dataset import AlzheimersDataset
 from utils.data_loader import load_alzheimers_data
 from utils.metrics_logger import MetricsLogger
 from models.TinyViT import TinyViT
-from models.TinyViT_with_Inception import TinyViT_with_Inception
-from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
+# from models.TinyViT_with_Inception import TinyViT_with_Inception
+# from models.TinyViT_with_ModifiedInception import TinyViT_with_ModifiedInception
 import copy
-from models.TinyViT_BEiT import TinyViT_BEiT
+# from models.TinyViT_BEiT import TinyViT_BEiT
 from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
 from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
-from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
-from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
+# from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
+# from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
 import math
 
 logger = logging.getLogger(__name__)
@@ -324,13 +324,25 @@ def valid(args, model, writer, test_loader, global_step):
 def get_optimizer(args, model):
     if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
         return get_optimizer_for_deit(args, model)
-    elif args.model_type in ['TinyViT_with_Inception_Advanced', 'TinyViT_with_ModifiedInception_Advanced']:
-        return get_optimizer_for_advanced(args, model)
+    # elif args.model_type in ['TinyViT_with_Inception_Advanced', 'TinyViT_with_ModifiedInception_Advanced']:
+    #     return get_optimizer_for_advanced(args, model)
     elif args.model_type in ['VanillaViT', 'VanillaViT_with_Inception', 'VanillaViT_with_ModifiedInception']:
         optimizer = torch.optim.AdamW(model.parameters(),
                                    lr=args.learning_rate,
                                    weight_decay=args.weight_decay,
                                    betas=(0.9, 0.999))
+    elif args.model_type in ["TinyViT_DeiT", "TinyViT_DeiT_with_Inception", "TinyViT_DeiT_with_ModifiedInception"]:
+        max_lrs = [group['lr'] for group in optimizer.param_groups]
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=max_lrs,
+            steps_per_epoch=len(train_loader),
+            epochs=args.num_epochs,
+            pct_start=0.2,  
+            div_factor=10,
+            final_div_factor=1e3,
+            anneal_strategy='cos'
+        )
     else:
         optimizer = torch.optim.Adam(model.parameters(),
                                    lr=args.learning_rate,
@@ -441,8 +453,8 @@ def train(args, model, optimizer):
     set_seed(args)
     scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
     
-    # Training loop
-    model.train()
+    # Initialize Mixup and EMA
+    mixup = Mixup(alpha=0.2)
     model_ema = ModelEMA(model)
     
     early_stopping = EarlyStopping(patience=7, min_delta=0.001)
@@ -460,19 +472,20 @@ def train(args, model, optimizer):
             if step % 10 == 0:
                 torch.cuda.empty_cache()
             
+            # Apply Mixup
+            if args.use_mixup:
+                images, labels_a, labels_b, lam = mixup(images, labels)
+            
             # Forward pass with mixed precision
-            if args.fp16:
-                with torch.cuda.amp.autocast():
-                    outputs = model(images)
-                    loss = criterion(outputs, labels)
-            else:
+            with torch.cuda.amp.autocast(enabled=args.fp16):
                 outputs = model(images)
-                loss = criterion(outputs, labels)
+                if args.use_mixup:
+                    loss = criterion(outputs, labels_a) * lam + criterion(outputs, labels_b) * (1 - lam)
+                else:
+                    loss = criterion(outputs, labels)
             
             # Backward pass
-            if args.gradient_accumulation_steps > 1:
-                loss = loss / args.gradient_accumulation_steps
-                
+            loss = loss / args.gradient_accumulation_steps
             if args.fp16:
                 scaler.scale(loss).backward()
             else:
@@ -489,6 +502,10 @@ def train(args, model, optimizer):
                     optimizer.step()
                 
                 optimizer.zero_grad()
+                scheduler.step()
+                
+                # Update EMA model
+                model_ema.update(model)
                 
                 # Update metrics
                 _, predicted = torch.max(outputs.data, 1)
@@ -516,6 +533,10 @@ def train(args, model, optimizer):
         # Validation phase
         val_loss, val_acc = validate(args, model, val_loader, criterion)
         
+        early_stopping(val_loss)
+        if early_stopping.stop:
+            logger.info("Early stopping triggered")
+            break
         # Save periodic checkpoint
         if (epoch + 1) % args.save_steps == 0:
             save_model(args, model, epoch)
@@ -553,8 +574,6 @@ def train(args, model, optimizer):
                    f'Train Acc={train_acc.avg:.4f}, '
                    f'Val Loss={val_loss:.4f}, '
                    f'Val Acc={val_acc:.4f}')
-        
-        model_ema.update(model)
         
         if early_stopping(val_loss):
             logger.info("Early stopping")
@@ -609,11 +628,21 @@ def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, ar
         total_loss += loss.item() * steps_per_update
 
 def get_optimizer_for_deit(args, model):
+    # Increase base learning rate and use layer-wise learning rates
+    backbone_params = {'params': [], 'lr': args.learning_rate * 0.1}  # Lower LR for pretrained
+    head_params = {'params': [], 'lr': args.learning_rate * 5.0}      # Higher LR for new parts
+    
+    for name, param in model.named_parameters():
+        if 'backbone' in name:
+            backbone_params['params'].append(param)
+        else:
+            head_params['params'].append(param)
+    
     optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.learning_rate * 3,  # Higher learning rate
+        [backbone_params, head_params],
         weight_decay=args.weight_decay,
-        betas=(0.9, 0.95)
+        betas=(0.9, 0.999),
+        eps=1e-8
     )
     
     return optimizer
@@ -630,9 +659,10 @@ def get_scheduler(args, optimizer, train_loader):
             max_lr=max_lrs,
             steps_per_epoch=len(train_loader),
             epochs=args.num_epochs,
-            pct_start=0.1,
-            div_factor=25,
-            final_div_factor=1e4
+            pct_start=0.2,  # Faster warmup
+            div_factor=10,  # Less aggressive initial lr reduction
+            final_div_factor=1e3,
+            anneal_strategy='cos'
         )
     else:
         # For other models, use WarmupCosineScheduler
@@ -740,6 +770,16 @@ def main():
                        help="Pin memory for faster data transfer")
     parser.add_argument("--prefetch_factor", type=int, default=2,
                        help="Number of batches to prefetch")
+    
+    # Add new arguments
+    parser.add_argument("--use_mixup", action="store_true",
+                       help="Whether to use mixup augmentation")
+    parser.add_argument("--use_ema", action="store_true",
+                       help="Whether to use model EMA")
+    parser.add_argument("--ema_decay", type=float, default=0.9999,
+                       help="Decay rate for EMA")
+    parser.add_argument("--mixup_alpha", type=float, default=0.2,
+                       help="Alpha parameter for mixup")
     
     args = parser.parse_args()
 

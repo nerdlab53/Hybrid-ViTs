@@ -22,23 +22,19 @@ class TinyViT_DeiT_with_Inception(PretrainedTinyViTBase):
             dropout=dropout,
             freeze_backbone=freeze_backbone
         )
-        
-        # Add Inception module before the backbone
+    
         self.inception = TinyInceptionModuleLite(in_channels=num_channels)
         
-        # Add a reduction layer after inception
         self.reduction = nn.Sequential(
             nn.Conv2d(32, num_channels, kernel_size=1),
             nn.BatchNorm2d(num_channels),
-            nn.GELU()
+            nn.GELU(),
+            nn.Dropout(0.1)
         )
 
     def forward(self, x):
-        # Apply inception module
         x = self.inception(x)
         
-        # Reduce channels back to original input size
         x = self.reduction(x)
         
-        # Continue with normal forward pass
         return super().forward(x) 
