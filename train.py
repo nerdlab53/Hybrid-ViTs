@@ -456,9 +456,8 @@ def train(args, model, optimizer):
                     torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
 
-    model.zero_grad()
-    set_seed(args)
-    scaler = torch.cuda.amp.GradScaler() if args.fp16 else None
+    # Add automatic mixed precision scaler
+    scaler = torch.cuda.amp.GradScaler(enabled=args.fp16)
     
     # Initialize Mixup and EMA
     mixup = Mixup(alpha=0.2)
@@ -472,6 +471,9 @@ def train(args, model, optimizer):
         
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.num_epochs}')
         for step, (images, labels) in enumerate(pbar):
+            # Ensure consistent data types
+            if args.fp16:
+                images = images.half()
             images = images.to(args.device, non_blocking=True)
             labels = labels.to(args.device, non_blocking=True)
             
@@ -479,11 +481,11 @@ def train(args, model, optimizer):
             if step % 10 == 0:
                 torch.cuda.empty_cache()
             
-            # Apply Mixup
+            # Apply Mixup if enabled
             if args.use_mixup:
                 images, labels_a, labels_b, lam = mixup(images, labels)
             
-            # Forward pass with mixed precision
+            # Use automatic mixed precision context
             with torch.cuda.amp.autocast(enabled=args.fp16):
                 outputs = model(images)
                 if args.use_mixup:
@@ -491,34 +493,33 @@ def train(args, model, optimizer):
                 else:
                     loss = criterion(outputs, labels)
             
-            # Backward pass
+            # Backward pass with gradient scaling
             loss = loss / args.gradient_accumulation_steps
-            if args.fp16:
-                scaler.scale(loss).backward()
-            else:
-                loss.backward()
+            scaler.scale(loss).backward()
             
             if (step + 1) % args.gradient_accumulation_steps == 0:
-                if args.fp16:
-                    scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                    scaler.step(optimizer)
-                    scaler.update()
-                else:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-                    optimizer.step()
+                # Unscale gradients and clip norm
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
                 
+                # Step optimizer and scaler
+                scaler.step(optimizer)
+                scaler.update()
                 optimizer.zero_grad()
-                scheduler.step()
                 
-                # Update EMA model
-                model_ema.update(model)
+                if scheduler is not None:
+                    scheduler.step()
+                
+                # Update EMA model if enabled
+                if args.use_ema and model_ema is not None:
+                    model_ema.update(model)
                 
                 # Update metrics
-                _, predicted = torch.max(outputs.data, 1)
-                accuracy = (predicted == labels).float().mean()
-                train_losses.update(loss.item())
-                train_acc.update(accuracy.item())
+                with torch.no_grad():
+                    _, predicted = torch.max(outputs.data, 1)
+                    accuracy = (predicted == labels).float().mean()
+                    train_losses.update(loss.item())
+                    train_acc.update(accuracy.item())
                 
                 # Update progress bar
                 pbar.set_postfix({
@@ -526,17 +527,12 @@ def train(args, model, optimizer):
                     'acc': f'{train_acc.avg:.4f}'
                 })
                 
-                # Log learning rate - corrected version
-                current_lr = optimizer.param_groups[0]['lr']
-                writer.add_scalar("train/lr", current_lr, global_step=step)
-                
-                writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
-                writer.add_scalar("train/accuracy", scalar_value=train_acc.avg, global_step=step)
-        
-        # Step the scheduler at epoch end
-        if scheduler is not None:
-            scheduler.step()
-        
+                # Log metrics
+                if step % args.logging_steps == 0:
+                    writer.add_scalar("train/loss", scalar_value=train_losses.avg, global_step=step)
+                    writer.add_scalar("train/accuracy", scalar_value=train_acc.avg, global_step=step)
+                    writer.add_scalar("train/lr", optimizer.param_groups[0]['lr'], global_step=step)
+
         # Validation phase
         val_loss, val_acc = validate(args, model, val_loader, criterion)
         
@@ -599,11 +595,14 @@ def validate(args, model, val_loader, criterion):
     
     with torch.no_grad():
         for images, labels in val_loader:
+            if args.fp16:
+                images = images.half()
             images = images.to(args.device)
             labels = labels.to(args.device)
             
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+            with torch.cuda.amp.autocast(enabled=args.fp16):
+                outputs = model(images)
+                loss = criterion(outputs, labels)
             
             _, predicted = torch.max(outputs.data, 1)
             accuracy = (predicted == labels).float().mean()
