@@ -256,9 +256,16 @@ def setup(args):
     # Enable automatic mixed precision
     if args.fp16:
         model = model.half()
-        for layer in model.modules():
-            if isinstance(layer, (nn.BatchNorm2d, nn.LayerNorm)):
-                layer.float()
+        for module in model.modules():
+            if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
+                module.float()
+            if isinstance(module, nn.BatchNorm2d):
+                module.weight.data = module.weight.data.float()
+                module.bias.data = module.bias.data.float()
+                module.running_mean = module.running_mean.float()
+                module.running_var = module.running_var.float()
+    
+    return args, model, optimizer
     
     return args, model, optimizer
 
