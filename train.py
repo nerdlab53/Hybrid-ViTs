@@ -33,6 +33,9 @@ import copy
 from models.TinyViT_BEiT import TinyViT_BEiT
 from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
 from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
+from models.TinyViT_with_Inception_Advanced import TinyViT_with_Inception_Advanced
+from models.TinyViT_with_ModifiedInception_Advanced import TinyViT_with_ModifiedInception_Advanced
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -619,11 +622,25 @@ def get_scheduler(args, optimizer, train_loader):
     num_training_steps = args.num_epochs * len(train_loader)
     num_warmup_steps = int(args.warmup_ratio * num_training_steps)
     
-    scheduler = WarmupCosineScheduler(
-        optimizer=optimizer,
-        warmup_steps=num_warmup_steps,
-        t_total=num_training_steps
-    )
+    if args.model_type in ["TinyViT_DeiT", "TinyViT_DeiT_with_Inception", "TinyViT_DeiT_with_ModifiedInception"]:
+        # For DeiT models, use OneCycleLR
+        max_lrs = [group['lr'] for group in optimizer.param_groups]
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=max_lrs,
+            steps_per_epoch=len(train_loader),
+            epochs=args.num_epochs,
+            pct_start=0.1,
+            div_factor=25,
+            final_div_factor=1e4
+        )
+    else:
+        # For other models, use WarmupCosineScheduler
+        scheduler = WarmupCosineScheduler(
+            optimizer,
+            warmup_steps=num_warmup_steps,
+            t_total=num_training_steps
+        )
     
     return scheduler
 
@@ -637,29 +654,13 @@ class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
         step = self.last_epoch
         if step < self.warmup_steps:
             # Linear warmup
-            lr_mult = float(step) / float(max(1, self.warmup_steps))
+            return [base_lr * float(step) / float(max(1, self.warmup_steps)) 
+                   for base_lr in self.base_lrs]
         else:
-            # For multiple parameter groups
-            max_lrs = []
-            for group in optimizer.param_groups:
-                max_lrs.append(group['lr'])
-                
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(
-                optimizer,
-                max_lr=max_lrs,
-                steps_per_epoch=len(train_loader),
-                epochs=args.num_epochs,
-                pct_start=0.1,
-                div_factor=25,
-                final_div_factor=1e4
-            )
-    else:
-        scheduler = WarmupCosineScheduler(
-            optimizer,
-            warmup_steps=args.warmup_steps,
-            max_steps=args.num_steps
-        )
-    return scheduler
+            # Cosine decay
+            progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
+            return [base_lr * 0.5 * (1. + math.cos(math.pi * progress))
+                   for base_lr in self.base_lrs]
 
 def main():
     parser = argparse.ArgumentParser()
