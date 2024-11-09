@@ -25,14 +25,14 @@ class TinyViT_DeiT_with_ModifiedInception(PretrainedTinyViTBase):
         )
         
         # Then add modified inception module
-        self.inception = TinyModifiedInceptionModuleLite(in_channels=num_channels)
+        self.inception = TinyModifiedInceptionModuleLite(in_channels=self.embed_dim)
         
         # Modified reduction layer
-        self.reduction = nn.Sequential(
-            nn.Conv2d(44, num_channels, kernel_size=1),
-            nn.BatchNorm2d(num_channels),
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(44),  # Match inception output channels
+            nn.Linear(44, self.embed_dim),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(dropout),
             nn.Linear(self.embed_dim, num_classes)
         )
 
