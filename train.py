@@ -326,6 +326,7 @@ def valid(args, model, writer, test_loader, global_step):
 
 def get_optimizer(args, model):
     if args.model_type in ['TinyViT_DeiT_with_Inception', 'TinyViT_DeiT_with_ModifiedInception']:
+        print("These optimizers are called")
         return get_optimizer_for_deit(args, model)
     # elif args.model_type in ['TinyViT_with_Inception_Advanced', 'TinyViT_with_ModifiedInception_Advanced']:
     #     return get_optimizer_for_advanced(args, model)
@@ -627,18 +628,21 @@ def train_epoch(model, train_loader, optimizer, criterion, scheduler, device, ar
         total_loss += loss.item() * steps_per_update
 
 def get_optimizer_for_deit(args, model):
-    # Increase base learning rate and use layer-wise learning rates
-    backbone_params = {'params': [], 'lr': args.learning_rate * 0.1}  # Lower LR for pretrained
-    head_params = {'params': [], 'lr': args.learning_rate * 5.0}      # Higher LR for new parts
+    # Three parameter groups with different learning rates
+    backbone_params = {'params': [], 'lr': args.learning_rate * 0.01}  # Lowest LR for pretrained
+    inception_params = {'params': [], 'lr': args.learning_rate * 0.1}  # Medium LR for inception
+    head_params = {'params': [], 'lr': args.learning_rate}            # Full LR for head
     
     for name, param in model.named_parameters():
         if 'backbone' in name:
             backbone_params['params'].append(param)
+        elif 'inception' in name:
+            inception_params['params'].append(param)
         else:
             head_params['params'].append(param)
     
     optimizer = torch.optim.AdamW(
-        [backbone_params, head_params],
+        [backbone_params, inception_params, head_params],
         weight_decay=args.weight_decay,
         betas=(0.9, 0.999),
         eps=1e-8

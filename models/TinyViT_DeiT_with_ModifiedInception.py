@@ -13,6 +13,7 @@ class TinyViT_DeiT_with_ModifiedInception(PretrainedTinyViTBase):
         dropout=0.1,
         freeze_backbone=True
     ):
+        # First initialize the base class to load pretrained weights
         super().__init__(
             pretrained_model_name='deit_tiny_patch16_224',
             img_size=img_size,
@@ -23,21 +24,37 @@ class TinyViT_DeiT_with_ModifiedInception(PretrainedTinyViTBase):
             freeze_backbone=freeze_backbone
         )
         
+        # Then add modified inception module
         self.inception = TinyModifiedInceptionModuleLite(in_channels=num_channels)
         
+        # Modified reduction layer
         self.reduction = nn.Sequential(
             nn.Conv2d(44, num_channels, kernel_size=1),
             nn.BatchNorm2d(num_channels),
             nn.GELU(),
             nn.Dropout(0.1),
-            nn.Conv2d(num_channels * 2, num_channels, kernel_size=1),
-            nn.BatchNorm2d(num_channels),
-            nn.GELU()
+            nn.Linear(self.embed_dim, num_classes)
         )
 
     def forward(self, x):
+        # Get features from backbone
+        x = self.backbone.forward_features(x)
+        
+        # Handle different output formats
+        if len(x.shape) == 4:  # CNN-like output [B, C, H, W]
+            x = self.global_pool(x)
+        elif len(x.shape) == 3:  # Transformer-like output [B, N, C]
+            x = x.mean(dim=1)  # Global average pooling over patches
+        
+        # Reshape for inception
+        B = x.shape[0]
+        x = x.view(B, self.embed_dim, 1, 1)
+        
+        # Apply inception
         x = self.inception(x)
+        x = self.global_pool(x)
+        x = torch.flatten(x, 1)
         
-        x = self.reduction(x)
-        
-        return super().forward(x) 
+        # Apply classification head
+        x = self.mlp_head(x)
+        return x

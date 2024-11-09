@@ -22,19 +22,38 @@ class TinyViT_DeiT_with_Inception(PretrainedTinyViTBase):
             dropout=dropout,
             freeze_backbone=freeze_backbone
         )
-    
-        self.inception = TinyInceptionModuleLite(in_channels=num_channels)
         
-        self.reduction = nn.Sequential(
-            nn.Conv2d(32, num_channels, kernel_size=1),
-            nn.BatchNorm2d(num_channels),
+        # Add inception module after backbone
+        self.inception = TinyInceptionModuleLite(in_channels=self.embed_dim)
+        
+        # Modify the head to handle inception output
+        self.mlp_head = nn.Sequential(
+            nn.LayerNorm(32),  # Match inception output channels
+            nn.Linear(32, self.embed_dim),
             nn.GELU(),
-            nn.Dropout(0.1)
+            nn.Dropout(0.1),
+            nn.Linear(self.embed_dim, num_classes)
         )
 
     def forward(self, x):
+        # Get features from backbone
+        x = self.backbone.forward_features(x)
+        
+        # Handle different output formats
+        if len(x.shape) == 4:  # CNN-like output [B, C, H, W]
+            x = self.global_pool(x)
+        elif len(x.shape) == 3:  # Transformer-like output [B, N, C]
+            x = x.mean(dim=1)  # Global average pooling over patches
+        
+        # Reshape for inception
+        B = x.shape[0]
+        x = x.view(B, self.embed_dim, 1, 1)
+        
+        # Apply inception
         x = self.inception(x)
+        x = self.global_pool(x)
+        x = torch.flatten(x, 1)
         
-        x = self.reduction(x)
-        
-        return super().forward(x) 
+        # Apply classification head
+        x = self.mlp_head(x)
+        return x
