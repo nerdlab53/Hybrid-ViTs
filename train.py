@@ -241,7 +241,7 @@ def setup(args):
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=args.learning_rate,
-        weight_decay=0.05,  # Increased from default
+        weight_decay=0.05,
         betas=(0.9, 0.999)
     )
     
@@ -253,17 +253,13 @@ def setup(args):
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
     
-    # Enable automatic mixed precision
     if args.fp16:
-        model = model.half()
+        # Keep the model in float32, we'll use AMP instead of full FP16
+        model = model.float()
+        # Ensure all batch norm and layer norm stay in float32
         for module in model.modules():
-            if isinstance(module, (nn.BatchNorm2d, nn.LayerNorm)):
+            if isinstance(module, (nn.LayerNorm, nn.BatchNorm2d)):
                 module.float()
-            if isinstance(module, nn.BatchNorm2d):
-                module.weight.data = module.weight.data.float()
-                module.bias.data = module.bias.data.float()
-                module.running_mean = module.running_mean.float()
-                module.running_var = module.running_var.float()
     
     return args, model, optimizer
     
@@ -456,7 +452,7 @@ def train(args, model, optimizer):
                     torch.distributed.get_world_size() if args.local_rank != -1 else 1))
     logger.info("  Gradient Accumulation steps = %d", args.gradient_accumulation_steps)
 
-    # Add automatic mixed precision scaler
+    # Initialize AMP gradient scaler
     scaler = torch.cuda.amp.GradScaler(enabled=args.fp16)
     
     # Initialize Mixup and EMA
@@ -471,9 +467,7 @@ def train(args, model, optimizer):
         
         pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.num_epochs}')
         for step, (images, labels) in enumerate(pbar):
-            # Ensure consistent data types
-            if args.fp16:
-                images = images.half()
+            # Keep inputs in float32, AMP will handle the conversion
             images = images.to(args.device, non_blocking=True)
             labels = labels.to(args.device, non_blocking=True)
             
@@ -595,8 +589,7 @@ def validate(args, model, val_loader, criterion):
     
     with torch.no_grad():
         for images, labels in val_loader:
-            if args.fp16:
-                images = images.half()
+            # Keep inputs in float32, AMP will handle the conversion
             images = images.to(args.device)
             labels = labels.to(args.device)
             
