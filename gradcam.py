@@ -68,7 +68,7 @@ class GradCAM:
             elif hasattr(model.backbone, 'layers'):
                 return model.backbone.layers[-1].blocks[-1].norm1
         raise ValueError(f"Unsupported model architecture: {type(model)}")
-    
+
     def generate_cam(self, input_image, target_class=None):
         # Forward pass
         model_output = self.model(input_image)
@@ -154,17 +154,36 @@ def apply_gradcam(model, input_tensor, original_image, save_path):
     
     return cam
 
-model_classes = {
-    'resnet': ResNet50_for_Alzheimer,
-    'vgg16': VGG_for_Alzheimer,
-    'densenet121': DenseNet_for_Alzheimer,
-    'efficientnet': EfficientNet_for_Alzheimer,
-    'mobilenetv2': MobileNet_for_Alzheimer,
-    'tiny_vit_deit': TinyViT_DeiT,
-    'tiny_vit_convnext': TinyViT_ConvNeXt,
-    'tiny_vit_deit_with_inception': TinyViT_DeiT_with_Inception,
-    'tiny_vit_deit_with_modified_inception': TinyViT_DeiT_with_ModifiedInception
-}
+def load_model_weights(model, checkpoint_path, device):
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        if 'state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['state_dict'])
+        elif 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            model.load_state_dict(checkpoint)
+        return model
+    except Exception as e:
+        print(f"Error loading weights from {checkpoint_path}: {str(e)}")
+        return None
+
+def create_comparative_plot(results, output_dir):
+    """Create a comparative plot of attention metrics across models."""
+    models = list(results.keys())
+    metrics = ['mean_attention', 'max_attention', 'attention_coverage']
+    
+    fig, axes = plt.subplots(1, len(metrics), figsize=(15, 5))
+    
+    for i, metric in enumerate(metrics):
+        values = [results[model][metric] for model in models]
+        axes[i].bar(models, values)
+        axes[i].set_title(metric.replace('_', ' ').title())
+        axes[i].tick_params(axis='x', rotation=45)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, 'comparative_analysis.png'))
+    plt.close()
 
 def analyze_models(models_dir, image_path, output_dir):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -172,6 +191,18 @@ def analyze_models(models_dir, image_path, output_dir):
     
     input_tensor, original_image = load_image(image_path)
     input_tensor = input_tensor.to(device)
+    
+    model_classes = {
+        'resnet': ResNet50_for_Alzheimer,
+        'vgg16': VGG_for_Alzheimer,
+        'densenet121': DenseNet_for_Alzheimer,
+        'efficientnet': EfficientNet_for_Alzheimer,
+        'mobilenetv2': MobileNet_for_Alzheimer,
+        'tiny_vit_deit': TinyViT_DeiT,
+        'tiny_vit_convnext': TinyViT_ConvNeXt,
+        'tiny_vit_deit_with_inception': TinyViT_DeiT_with_Inception,
+        'tiny_vit_deit_with_modified_inception': TinyViT_DeiT_with_ModifiedInception
+    }
     
     results = {}
     
@@ -209,53 +240,6 @@ def analyze_models(models_dir, image_path, output_dir):
     
     create_comparative_plot(results, output_dir)
     return results
-
-def create_comparative_plot(results, output_dir):
-    """Create comparative analysis plot of attention patterns."""
-    # Define model categories
-    categories = {
-        'CNN': ['resnet', 'vgg16', 'densenet121', 'efficientnet', 'mobilenetv2'],
-        'ViT': ['tiny_vit_deit', 'tiny_vit_convnext'],
-        'Hybrid': [
-            'tiny_vit_deit_with_inception',
-            'tiny_vit_deit_with_modified_inception'
-        ]
-    }
-    
-    metrics = ['mean_attention', 'max_attention', 'attention_coverage']
-    
-    # Create figure with subplots for each category
-    fig, axes = plt.subplots(len(categories), len(metrics), figsize=(20, 15))
-    fig.suptitle('Comparative Analysis of Attention Patterns by Model Type')
-    
-    for i, (category, models) in enumerate(categories.items()):
-        category_results = {k: v for k, v in results.items() if k in models}
-        
-        for j, metric in enumerate(metrics):
-            values = [results[model][metric] for model in models if model in results]
-            model_names = [model for model in models if model in results]
-            
-            axes[i, j].bar(model_names, values)
-            axes[i, j].set_title(f'{category} - {metric.replace("_", " ").title()}')
-            axes[i, j].set_xticklabels(model_names, rotation=45, ha='right')
-            axes[i, j].grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'attention_comparison_by_category.png'), 
-                dpi=300, bbox_inches='tight')
-    plt.close()
-
-def load_model_weights(model, checkpoint_path, device):
-    try:
-        checkpoint = torch.load(checkpoint_path, map_location=device)
-        if 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-        else:
-            model.load_state_dict(checkpoint)
-        return model
-    except Exception as e:
-        print(f"Error loading weights from {checkpoint_path}: {str(e)}")
-        return None
 
 if __name__ == "__main__":
     import argparse
