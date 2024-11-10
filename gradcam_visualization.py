@@ -179,26 +179,13 @@ def visualize_gradcam(image_path, model, save_path=None):
 
 # Example usage
 if __name__ == "__main__":
-    # Load your model
-    from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
+    # Import models and utilities
     from models.TinyViT_DeiT import TinyViT_DeiT
     from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
     from models.TinyViT_ConvNeXt import TinyViT_ConvNeXt
+    from utils.checkpoints import load_model_weights
     
-    
-    # # Initialize model
-    # model = TinyViT_DeiT_with_ModifiedInception().to('cuda')
-    
-    # # Load weights
-    # checkpoint = torch.load('Model Weights/tiny_vit_deit_with_modified_inception/checkpoint_best.pth')
-    # # The checkpoint contains training metadata - we need the 'state_dict' key
-    # model.load_state_dict(checkpoint['state_dict'])
-    
-    # # Path to your image
-    # image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
-    
-    # # Visualize GradCAM
-    # visualize_gradcam(image_path, model, save_path="gradcam_output.png")
+    # List of models and their checkpoint paths
     models_config = [
         (TinyViT_DeiT(), 'Model Weights/tiny_vit_deit/checkpoint_best.pth'),
         (TinyViT_DeiT_with_Inception(), 'Model Weights/tiny_vit_deit_with_inception/checkpoint_best.pth'),
@@ -216,9 +203,11 @@ if __name__ == "__main__":
         # Move model to GPU
         model = model.to('cuda')
         
-        # Load weights
-        checkpoint = torch.load(checkpoint_path)
-        model.load_state_dict(checkpoint['state_dict'])
+        # Load weights using the utility function
+        model = load_model_weights(model, checkpoint_path, 'cuda')
+        if model is None:
+            print(f"Failed to load weights for {model_name}, skipping...")
+            continue
         
         # Visualize GradCAM
         visualize_gradcam(image_path, model, save_path=f"gradcam_output_{model_name}.png")
