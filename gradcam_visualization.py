@@ -188,26 +188,18 @@ def visualize_gradcam(image_path, model, save_path=None):
 
 # Example usage
 if __name__ == "__main__":
-    # Import model
+    # Import model and utilities
     from models.TinyViT_DeiT import TinyViT_DeiT
+    from utils.checkpoints import load_model_weights
     
     # Initialize model
     model = TinyViT_DeiT().to('cuda')
     
-    # Load weights
-    checkpoint = torch.load('Model Weights/tiny_vit_deit/checkpoint_best.pth')
-    
-    # Debug: Print model structure and checkpoint keys
-    print("\nModel state_dict keys:")
-    for key in model.state_dict().keys():
-        print(key)
-        
-    print("\nCheckpoint state_dict keys:")
-    for key in checkpoint['state_dict'].keys():
-        print(key)
-    
-    # Load state dict
-    model.load_state_dict(checkpoint['state_dict'], strict=False)
+    # Load weights using the robust loader
+    model = load_model_weights(model, 'Model Weights/tiny_vit_deit/checkpoint_best.pth', 'cuda')
+    if model is None:
+        print("Failed to load model weights!")
+        exit()
     
     # Ensure model is in eval mode and gradients are enabled
     model.eval()
