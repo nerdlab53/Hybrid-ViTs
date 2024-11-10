@@ -92,7 +92,8 @@ class GradCAM:
         # Restore model state
         self.model.train(was_training)
         
-        return cam.squeeze().cpu().numpy()
+        # Detach tensor before converting to numpy
+        return cam.squeeze().detach().cpu().numpy()
 
 def load_and_preprocess_image(image_path, device='cuda'):
     # Load the image
