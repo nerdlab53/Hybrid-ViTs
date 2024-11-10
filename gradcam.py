@@ -48,34 +48,27 @@ class GradCAM:
     def _get_target_layer_custom(self, model):
         if hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                # For ViT models, use the output of the last block
-                return model.backbone.blocks[-1]
+                # For ViT models, use the attention layer of the last block
+                return model.backbone.blocks[-1].attn.qkv
             elif hasattr(model.backbone, 'stages'):
                 return model.backbone.stages[-1]
         elif hasattr(model, 'inception'):
-            # For hybrid models, use the inception module
             return model.inception
-        # For CNN models
-        elif hasattr(model, 'resnet'):
-            return model.resnet.layer4[-1]
-        elif hasattr(model, 'vgg'):
-            return model.vgg.features[-1]
-        elif hasattr(model, 'densenet'):
-            return model.densenet.features.denseblock4
-        elif hasattr(model, 'efficientnet'):
-            return model.efficientnet.features[-1]
-        elif hasattr(model, 'mobilenet'):
-            return model.mobilenet.features[-1]
         return None
 
     def reshape_transform(self, tensor):
-        if len(tensor.shape) == 3:
-            # For transformer output: [B, N, C] -> [B, C, H, W]
-            result = tensor[:, 1:, :]  # Remove CLS token
-            size = int(math.sqrt(result.shape[1]))
-            result = result.reshape(result.shape[0], size, size, result.shape[-1])
-            result = result.permute(0, 3, 1, 2)
-            return result
+        if len(tensor.shape) == 3:  # [B, N, 3*C]
+            # For ViT QKV output
+            B, N, C = tensor.shape
+            C = C // 3  # Split into q, k, v
+            tensor = tensor.reshape(B, N, 3, C).permute(0, 2, 1, 3)
+            # Use only the key path for attention visualization
+            tensor = tensor[:, 1]  # [B, N, C]
+            if N > 1:  # Has CLS token
+                tensor = tensor[:, 1:]  # Remove CLS token
+            size = int(math.sqrt(tensor.shape[1]))
+            tensor = tensor.reshape(B, size, size, -1).permute(0, 3, 1, 2)
+            return tensor
         return tensor
 
     def generate_cam(self, input_image, target_class=None):
@@ -98,7 +91,7 @@ class GradCAM:
             print("Warning: No gradients or activations found")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
         
-        # Transform activations if needed
+        # Transform activations and gradients
         activations = self.reshape_transform(self.activations)
         gradients = self.reshape_transform(self.gradients)
         
