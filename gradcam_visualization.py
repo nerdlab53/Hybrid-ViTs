@@ -188,40 +188,34 @@ def visualize_gradcam(image_path, model, save_path=None):
 
 # Example usage
 if __name__ == "__main__":
-    # Import models and utilities
+    # Import model
     from models.TinyViT_DeiT import TinyViT_DeiT
-    from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
-    from models.TinyViT_ConvNeXt import TinyViT_ConvNeXt
-    from utils.checkpoints import load_model_weights
     
-    # List of models and their checkpoint paths
-    models_config = [
-        (TinyViT_DeiT(), 'Model Weights/tiny_vit_deit/checkpoint_best.pth'),
-        (TinyViT_DeiT_with_Inception(), 'Model Weights/tiny_vit_deit_with_inception/checkpoint_best.pth'),
-        (TinyViT_ConvNeXt(), 'Model Weights/tiny_vit_convnext/checkpoint_best.pth')
-    ]
+    # Initialize model
+    model = TinyViT_DeiT().to('cuda')
+    
+    # Load weights
+    checkpoint = torch.load('Model Weights/tiny_vit_deit/checkpoint_best.pth')
+    
+    # Debug: Print model structure and checkpoint keys
+    print("\nModel state_dict keys:")
+    for key in model.state_dict().keys():
+        print(key)
+        
+    print("\nCheckpoint state_dict keys:")
+    for key in checkpoint['state_dict'].keys():
+        print(key)
+    
+    # Load state dict
+    model.load_state_dict(checkpoint['state_dict'], strict=False)
+    
+    # Ensure model is in eval mode and gradients are enabled
+    model.eval()
+    for param in model.parameters():
+        param.requires_grad = True
     
     # Path to your image
     image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
     
-    # Process each model
-    for model, checkpoint_path in models_config:
-        model_name = model.__class__.__name__
-        print(f"\nProcessing {model_name}...")
-        print(f"Model backbone type: {model.backbone.__class__.__name__}")
-        
-        # Move model to GPU
-        model = model.to('cuda')
-        
-        # Load weights using the utility function
-        model = load_model_weights(model, checkpoint_path, 'cuda')
-        if model is None:
-            print(f"Failed to load weights for {model_name}, skipping...")
-            continue
-        
-        # Unfreeze model for gradient computation
-        for param in model.parameters():
-            param.requires_grad = True
-        
-        # Visualize GradCAM
-        visualize_gradcam(image_path, model, save_path=f"gradcam_output_{model_name}.png")
+    # Visualize GradCAM
+    visualize_gradcam(image_path, model, save_path="gradcam_output_TinyViT_DeiT.png")
