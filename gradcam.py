@@ -46,13 +46,27 @@ class GradCAM:
             target.register_full_backward_hook(backward_hook)
     
     def _get_target_layer_custom(self, model):
-        if hasattr(model, 'backbone'):
+        """Get the target layer based on model architecture."""
+        # For standard CNN models
+        if hasattr(model, 'resnet'):
+            return model.resnet.layer4[-1]
+        elif hasattr(model, 'vgg'):
+            return model.vgg.features[-1]
+        elif hasattr(model, 'densenet'):
+            return model.densenet.features.denseblock4
+        elif hasattr(model, 'efficientnet'):
+            return model.efficientnet.features[-1]
+        elif hasattr(model, 'mobilenet'):
+            return model.mobilenet.features[-1]
+        # For transformer and inception models
+        elif hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                return model.backbone.blocks[-1].mlp
+                return model.backbone.blocks[-1]  # Return the last transformer block
             elif hasattr(model.backbone, 'stages'):
-                return model.backbone.stages[-1]
-        elif hasattr(model, 'inception'):
-            return model.inception
+                try:
+                    return model.backbone.stages[-1][-1]  # For ConvNeXt
+                except:
+                    return model.backbone.stages[-1]
         return None
 
     def generate_cam(self, input_image, target_class=None):
@@ -83,17 +97,26 @@ class GradCAM:
             cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
         else:  # Transformer or inception output
             if len(self.gradients.shape) == 3:  # [B, N, C]
-                weights = torch.mean(self.gradients, dim=1)
-                cam = torch.matmul(self.activations, weights.unsqueeze(-1))
-                size = int(math.sqrt(cam.shape[1]))
-                cam = cam.reshape(-1, size, size).unsqueeze(1)
+                weights = torch.mean(self.gradients, dim=1)  # [B, C]
+                if len(self.activations.shape) == 3:  # [B, N, C]
+                    cam = torch.einsum('bc,bnc->bn', weights, self.activations)
+                    size = int(math.sqrt(cam.shape[1]))
+                    cam = cam.reshape(-1, size, size).unsqueeze(1)
+                else:  # [B, C, H, W]
+                    cam = torch.einsum('bc,bchw->bhw', weights, self.activations)
+                    cam = cam.unsqueeze(1)
             else:
                 weights = torch.mean(self.gradients, dim=1, keepdim=True)
                 cam = torch.matmul(self.activations, weights.transpose(-1, -2))
         
+        # Ensure positive values and normalize
         cam = F.relu(cam)
+        if cam.sum() == 0:
+            print("Warning: CAM is all zeros")
+            return np.zeros((input_image.shape[2], input_image.shape[3]))
+        
         cam = F.interpolate(cam, size=input_image.shape[2:], 
-                          mode='bilinear', align_corners=False)
+                           mode='bilinear', align_corners=False)
         cam = cam - cam.min()
         cam = cam / (cam.max() + 1e-8)
         
