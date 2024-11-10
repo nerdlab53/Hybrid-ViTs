@@ -28,27 +28,16 @@ class GradCAM:
         
         # Register hooks
         def forward_hook(module, input, output):
-            self.activations = output
+            self.activations = output.detach()
             
         def backward_hook(module, grad_input, grad_output):
-            self.gradients = grad_output[0]
+            self.gradients = grad_output[0].detach()
         
         # Register hooks based on model type
-        if hasattr(model, 'backbone'):  # Pretrained models
-            target = self._get_target_layer_pretrained(model)
-        else:  # Custom models
-            target = self._get_target_layer_custom(model)
-            
-        target.register_forward_hook(forward_hook)
-        target.register_backward_hook(backward_hook)
-    
-    def _get_target_layer_pretrained(self, model):
-        # For DeiT, Swin, and ConvNeXt
-        if hasattr(model.backbone, 'blocks'):
-            return model.backbone.blocks[-1].norm1  # Last transformer block
-        elif hasattr(model.backbone, 'stages'):
-            return model.backbone.stages[-1].blocks[-1]  # Last stage, last block
-        return model.backbone.head  # Fallback
+        target = self._get_target_layer_custom(model)
+        if target is not None:
+            target.register_forward_hook(forward_hook)
+            target.register_full_backward_hook(backward_hook)  # Using full_backward_hook instead
     
     def _get_target_layer_custom(self, model):
         """Get the target layer based on model architecture."""
@@ -64,10 +53,10 @@ class GradCAM:
             return model.mobilenet.features[-1]
         elif hasattr(model, 'backbone'):  # For ViT models
             if hasattr(model.backbone, 'blocks'):
-                return model.backbone.blocks[-1].norm1
+                return model.backbone.blocks[-1]  # Return the entire last block
             elif hasattr(model.backbone, 'layers'):
-                return model.backbone.layers[-1].blocks[-1].norm1
-        raise ValueError(f"Unsupported model architecture: {type(model)}")
+                return model.backbone.layers[-1]
+        return None
 
     def generate_cam(self, input_image, target_class=None):
         # Forward pass
@@ -82,13 +71,27 @@ class GradCAM:
         # Backward pass
         model_output[0, target_class].backward()
         
-        # Get weights
-        gradients = self.gradients.mean((2, 3), keepdim=True)
-        activations = self.activations
-        
-        # Weight the activations by the gradients
-        weights = F.adaptive_avg_pool2d(gradients, 1)
-        cam = torch.sum(weights * activations, dim=1, keepdim=True)
+        # Handle transformer models differently
+        if hasattr(self.model, 'backbone') and hasattr(self.model.backbone, 'blocks'):
+            # For transformer models, use attention weights directly
+            gradients = self.gradients
+            activations = self.activations
+            
+            # Reshape if needed
+            if len(gradients.shape) == 3:
+                gradients = gradients.unsqueeze(0)
+            if len(activations.shape) == 3:
+                activations = activations.unsqueeze(0)
+            
+            # Calculate attention weights
+            weights = gradients.mean(1).unsqueeze(1)
+            cam = torch.matmul(weights, activations)
+        else:
+            # Traditional CNN approach
+            gradients = self.gradients.mean((2, 3), keepdim=True)
+            activations = self.activations
+            weights = F.adaptive_avg_pool2d(gradients, 1)
+            cam = torch.sum(weights * activations, dim=1, keepdim=True)
         
         # ReLU and normalize
         cam = F.relu(cam)
