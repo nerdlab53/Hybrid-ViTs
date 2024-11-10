@@ -39,20 +39,20 @@ class GradCAM:
     def _get_target_layer_custom(self, model):
         """Get target layer based on CNN architecture."""
         if isinstance(model, ResNet50_for_Alzheimer):
-            # For ResNet, get the last conv layer from the base model
-            return model.base_model.layer4[-1].conv3
+            # For ResNet
+            return model.model.layer4[-1].conv3
         elif isinstance(model, VGG_for_Alzheimer):
-            # For VGG, get the last conv layer from the base model
-            return model.base_model.features[-1]
+            # For VGG
+            return model.model.features[-1]
         elif isinstance(model, DenseNet_for_Alzheimer):
-            # For DenseNet, get the last conv layer from the base model
-            return model.base_model.features.denseblock4.denselayer16.conv2
+            # For DenseNet
+            return model.model.features.denseblock4.denselayer16.conv2
         elif isinstance(model, EfficientNet_for_Alzheimer):
-            # For EfficientNet, get the last conv layer from the base model
-            return model.base_model.features[-1]
+            # For EfficientNet
+            return model.model.features[-1]
         elif isinstance(model, MobileNet_for_Alzheimer):
-            # For MobileNet, get the last conv layer from the base model
-            return model.base_model.features[-1]
+            # For MobileNet
+            return model.model.features[-1]
         return None
 
     def generate_cam(self, input_image, target_class=None):
