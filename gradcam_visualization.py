@@ -186,11 +186,8 @@ if __name__ == "__main__":
     
     # Load weights
     checkpoint = torch.load('Model Weights/tiny_vit_deit_with_modified_inception/checkpoint_best.pth')
-    # Try loading the state dict directly if it's not nested under 'model_state_dict'
-    if 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint)
+    # The checkpoint contains training metadata - we need the 'state_dict' key
+    model.load_state_dict(checkpoint['state_dict'])
     
     # Path to your image
     image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
