@@ -21,16 +21,16 @@ class GradCAM:
         
         # Get target layer based on model architecture
         if hasattr(model, 'backbone'):
-            if 'convnext' in model.backbone.__class__.__name__.lower():
-                # For ConvNeXt models, use the last stage's features
-                target = model.backbone.stages[-1]
+            # For DeiT models, use the last block's output
+            if hasattr(model.backbone, 'blocks'):
+                target = model.backbone.blocks[-1]
                 if target is not None:
                     print(f"Target layer found: {target.__class__.__name__}")
                     target.register_forward_hook(forward_hook)
                     target.register_full_backward_hook(backward_hook)
-            elif hasattr(model.backbone, 'blocks'):
-                # For DeiT models, use the last block's attention output
-                target = model.backbone.blocks[-1].attn
+            # For ConvNeXt models
+            elif hasattr(model.backbone, 'stages'):
+                target = model.backbone.stages[-1]
                 if target is not None:
                     print(f"Target layer found: {target.__class__.__name__}")
                     target.register_forward_hook(forward_hook)
@@ -38,8 +38,9 @@ class GradCAM:
 
     def reshape_transform(self, tensor):
         if len(tensor.shape) == 3:  # [B, N, C] for ViT
-            # Remove CLS token
-            tensor = tensor[:, 1:]
+            # Remove CLS token if present
+            if tensor.shape[1] > 196:  # 14x14 patches = 196
+                tensor = tensor[:, 1:, :]
             
             # Calculate size of feature map (sqrt of number of patches)
             n = tensor.shape[1]
@@ -101,7 +102,6 @@ class GradCAM:
         # Restore model state
         self.model.train(was_training)
         
-        # Detach tensor before converting to numpy
         return cam.squeeze().detach().cpu().numpy()
 
 def load_and_preprocess_image(image_path, device='cuda'):
@@ -201,9 +201,15 @@ if __name__ == "__main__":
         print("Failed to load model weights!")
         exit()
     
-    # Ensure model is in eval mode and gradients are enabled
+    # Ensure model is in eval mode
     model.eval()
+    
+    # Unfreeze the entire model for gradient computation
     for param in model.parameters():
+        param.requires_grad = True
+    
+    # Specifically unfreeze the last transformer block
+    for param in model.backbone.blocks[-1].parameters():
         param.requires_grad = True
     
     # Path to your image
