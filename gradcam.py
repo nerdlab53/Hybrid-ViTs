@@ -47,16 +47,25 @@ class GradCAM:
     
     def _get_target_layer_custom(self, model):
         """Get target layer based on model architecture."""
-        if hasattr(model, 'backbone'):
-            if hasattr(model.backbone, 'blocks'):
-                # For DeiT models
-                return model.backbone.blocks[-1].norm1
-            elif hasattr(model.backbone, 'stages'):
-                # For ConvNeXt
-                return model.backbone.stages[-1][-1].block[-1]
-        elif hasattr(model, 'inception'):
-            # For hybrid models with inception
-            return model.inception
+        # For CNN models
+        if hasattr(model, 'resnet'):
+            return model.resnet.layer4[-1]
+        elif hasattr(model, 'vgg'):
+            return model.vgg.features[-1]
+        elif hasattr(model, 'densenet'):
+            return model.densenet.features.denseblock4
+        elif hasattr(model, 'efficientnet'):
+            return model.efficientnet.features[-1]
+        elif hasattr(model, 'mobilenet'):
+            return model.mobilenet.features[-1]
+        # For transformer and hybrid models
+        elif hasattr(model, 'backbone'):
+            if hasattr(model.backbone, 'norm'):
+                # For DeiT and hybrid models
+                return model.backbone.norm
+        elif hasattr(model, 'norm'):
+            # For base TinyViT
+            return model.norm
         return None
 
     def reshape_transform(self, tensor):
