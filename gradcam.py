@@ -60,23 +60,30 @@ class GradCAM:
             return model.mobilenet.features[-1]
         # For transformer and hybrid models
         elif hasattr(model, 'backbone'):
-            if hasattr(model.backbone, 'norm'):
-                # For DeiT and hybrid models
-                return model.backbone.norm
-        elif hasattr(model, 'norm'):
+            if hasattr(model.backbone, 'blocks'):
+                # For DeiT and hybrid models, use the last transformer block
+                return model.backbone.blocks[-1]
+        elif hasattr(model, 'transformer_blocks'):
             # For base TinyViT
-            return model.norm
+            return model.transformer_blocks[-1]
         return None
 
     def reshape_transform(self, tensor):
         """Transform tensor based on architecture."""
         if len(tensor.shape) == 3:  # [B, N, C]
+            # Handle transformer output
             B, N, C = tensor.shape
-            if N > 1:  # Has CLS token
-                tensor = tensor[:, 1:]  # Remove CLS token
+            if isinstance(tensor, tuple):
+                tensor = tensor[0]
             
-            H = W = int(math.sqrt(tensor.shape[1]))
-            tensor = tensor.reshape(B, H, W, C)
+            # Remove CLS token if present
+            if N > 1:
+                tensor = tensor[:, 1:]
+            
+            # Reshape to image-like format
+            size = int(math.sqrt(tensor.shape[1]))
+            tensor = tensor.reshape(B, size, size, C)
+            # Change to channels-first format [B, C, H, W]
             tensor = tensor.permute(0, 3, 1, 2)
             return tensor
         return tensor
@@ -84,7 +91,6 @@ class GradCAM:
     def generate_cam(self, input_image, target_class=None):
         self.model.eval()
         
-        # Forward pass
         with torch.enable_grad():
             model_output = self.model(input_image)
             
@@ -101,9 +107,13 @@ class GradCAM:
             print("Warning: No gradients or activations found")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
         
-        # Transform activations and gradients
-        activations = self.reshape_transform(self.activations)
-        gradients = self.reshape_transform(self.gradients)
+        # Handle tuple outputs from transformer blocks
+        gradients = self.gradients[0] if isinstance(self.gradients, tuple) else self.gradients
+        activations = self.activations[0] if isinstance(self.activations, tuple) else self.activations
+        
+        # Transform tensors
+        gradients = self.reshape_transform(gradients)
+        activations = self.reshape_transform(activations)
         
         # Calculate weights and CAM
         weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
