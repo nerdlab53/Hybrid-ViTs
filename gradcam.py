@@ -60,32 +60,30 @@ class GradCAM:
             return model.mobilenet.features[-1]
         # For transformer and hybrid models
         elif hasattr(model, 'backbone'):
+            print("has backbone")
             if hasattr(model.backbone, 'blocks'):
-                # For DeiT models (from timm)
-                return model.backbone.blocks[-1].norm1
-            elif hasattr(model.backbone, 'stages'):
-                # For ConvNeXt
-                return model.backbone.stages[-1][-1]
+                print("has blocks")
+                # For DeiT and hybrid models, target the attention module of last block
+                return model.backbone.blocks[-1].attn
+        print("no target layer found")
         return None
 
     def reshape_transform(self, tensor):
         """Transform tensor based on architecture."""
         if len(tensor.shape) == 3:  # [B, N, C]
-            # Handle transformer output
-            B, N, C = tensor.shape
-            if isinstance(tensor, tuple):
-                tensor = tensor[0]
+            # For transformer attention output
+            result = tensor
             
             # Remove CLS token if present
-            if N > 1:
-                tensor = tensor[:, 1:]
-            
-            # Reshape to image-like format
-            size = int(math.sqrt(tensor.shape[1]))
-            tensor = tensor.reshape(B, size, size, C)
-            # Change to channels-first format [B, C, H, W]
-            tensor = tensor.permute(0, 3, 1, 2)
-            return tensor
+            if tensor.size(1) > 1:
+                result = tensor[:, 1:]
+                
+            # Reshape to square feature map
+            size = int(math.sqrt(result.size(1)))
+            result = result.reshape(result.size(0), size, size, result.size(2))
+            # Rearrange to [B, C, H, W]
+            result = result.permute(0, 3, 1, 2)
+            return result
         return tensor
 
     def generate_cam(self, input_image, target_class=None):
