@@ -21,7 +21,14 @@ class GradCAM:
         
         # Get target layer based on model architecture
         if hasattr(model, 'backbone'):
-            if hasattr(model.backbone, 'blocks'):
+            if 'convnext' in model.backbone.__class__.__name__.lower():
+                # For ConvNeXt models, use the last stage's features
+                target = model.backbone.stages[-1]
+                if target is not None:
+                    print(f"Target layer found: {target.__class__.__name__}")
+                    target.register_forward_hook(forward_hook)
+                    target.register_full_backward_hook(backward_hook)
+            elif hasattr(model.backbone, 'blocks'):
                 # For DeiT models, use the last block's attention output
                 target = model.backbone.blocks[-1].attn
                 if target is not None:
@@ -30,7 +37,7 @@ class GradCAM:
                     target.register_full_backward_hook(backward_hook)
 
     def reshape_transform(self, tensor):
-        if len(tensor.shape) == 3:  # [B, N, C]
+        if len(tensor.shape) == 3:  # [B, N, C] for ViT
             # Remove CLS token
             tensor = tensor[:, 1:]
             
@@ -44,6 +51,8 @@ class GradCAM:
             # Permute to [B, C, H, W]
             tensor = tensor.permute(0, 3, 1, 2)
             
+            return tensor
+        elif len(tensor.shape) == 4:  # [B, C, H, W] for ConvNeXt
             return tensor
         return tensor
 
@@ -199,6 +208,7 @@ if __name__ == "__main__":
     for model, checkpoint_path in models_config:
         model_name = model.__class__.__name__
         print(f"\nProcessing {model_name}...")
+        print(f"Model backbone type: {model.backbone.__class__.__name__}")
         
         # Move model to GPU
         model = model.to('cuda')
@@ -208,6 +218,10 @@ if __name__ == "__main__":
         if model is None:
             print(f"Failed to load weights for {model_name}, skipping...")
             continue
+        
+        # Unfreeze model for gradient computation
+        for param in model.parameters():
+            param.requires_grad = True
         
         # Visualize GradCAM
         visualize_gradcam(image_path, model, save_path=f"gradcam_output_{model_name}.png")
