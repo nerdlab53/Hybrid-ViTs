@@ -58,15 +58,18 @@ class GradCAM:
             return model.efficientnet.features[-1]
         elif hasattr(model, 'mobilenet'):
             return model.mobilenet.features[-1]
-        # For transformer and inception models
+        # For transformer and hybrid models
         elif hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                return model.backbone.blocks[-1]  # Return the last transformer block
+                # For ViT models, use the last attention block
+                return model.backbone.blocks[-1].attn
             elif hasattr(model.backbone, 'stages'):
                 try:
-                    return model.backbone.stages[-1][-1]  # For ConvNeXt
+                    return model.backbone.stages[-1][-1]
                 except:
                     return model.backbone.stages[-1]
+        elif hasattr(model, 'inception'):
+            return model.inception
         return None
 
     def generate_cam(self, input_image, target_class=None):
@@ -95,14 +98,18 @@ class GradCAM:
         if len(self.gradients.shape) == 4:  # CNN-like output
             weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)
             cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
-        else:  # Transformer or inception output
-            if len(self.gradients.shape) == 3:  # [B, N, C]
+        else:  # Transformer or hybrid output
+            if len(self.gradients.shape) == 3:  # [B, N, C] for attention
                 weights = torch.mean(self.gradients, dim=1)  # [B, C]
                 if len(self.activations.shape) == 3:  # [B, N, C]
+                    # For attention maps
                     cam = torch.einsum('bc,bnc->bn', weights, self.activations)
+                    # Remove CLS token if present
+                    if cam.shape[1] > 1:  # Has CLS token
+                        cam = cam[:, 1:]  # Remove CLS token
                     size = int(math.sqrt(cam.shape[1]))
                     cam = cam.reshape(-1, size, size).unsqueeze(1)
-                else:  # [B, C, H, W]
+                else:  # [B, C, H, W] for hybrid features
                     cam = torch.einsum('bc,bchw->bhw', weights, self.activations)
                     cam = cam.unsqueeze(1)
             else:
