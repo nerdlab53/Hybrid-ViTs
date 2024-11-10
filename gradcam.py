@@ -46,23 +46,26 @@ class GradCAM:
         """Get target layer based on model architecture."""
         if hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                # For DeiT, use the output of the last block's attention
-                return model.backbone.blocks[-1].attn.proj
+                # For DeiT, use the output of the last block's norm1
+                return model.backbone.blocks[-1].norm1
         return None
 
     def reshape_transform(self, tensor):
         """Reshape transform for transformer outputs."""
-        result = tensor
-        
-        if len(tensor.shape) == 3:
-            # [B, N, C] -> [B, C, N]
-            result = result.transpose(1, 2)
-            # [B, C, N] -> [B, C, H, W]
-            size = int(math.sqrt(result.size(2)))
-            result = result.reshape(result.size(0), result.size(1), size, size)
+        if len(tensor.shape) == 3:  # [B, N, C]
+            # Remove CLS token and reshape
+            result = tensor[:, 1:, :]  # Remove CLS token, now [B, 196, C]
             
-        print(f"Reshaped tensor from {tensor.shape} to {result.shape}")
-        return result
+            # Reshape to square feature map
+            size = int(math.sqrt(result.size(1)))  # sqrt(196) = 14
+            result = result.reshape(result.size(0), size, size, result.size(2))
+            
+            # Permute to [B, C, H, W]
+            result = result.permute(0, 3, 1, 2)
+            
+            print(f"Reshaped tensor from {tensor.shape} to {result.shape}")
+            return result
+        return tensor
 
     def generate_cam(self, input_image, target_class=None):
         print("\nGenerating CAM...")
@@ -117,6 +120,7 @@ def load_image(image_path, size=224):
     ])
     
     image = Image.open(image_path).convert('RGB')
+    print(f"Shape of image: {image.size}")
     input_tensor = transform(image).unsqueeze(0)
     return input_tensor, image
 
