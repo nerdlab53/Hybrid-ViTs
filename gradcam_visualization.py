@@ -189,7 +189,7 @@ if __name__ == "__main__":
     model.load_state_dict(checkpoint['model_state_dict'])
     
     # Path to your image
-    image_path = "path/to/your/image.jpg"
+    image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
     
     # Visualize GradCAM
     visualize_gradcam(image_path, model, save_path="gradcam_output.png")
