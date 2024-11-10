@@ -19,3 +19,41 @@ def load_checkpoint(model, checkpoint_path):
         model.load_state_dict(checkpoint['state_dict'])
         return checkpoint['best_val_acc']
     return 0.0 
+
+def load_model_weights(model, checkpoint_path, device):
+    try:
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        state_dict = None
+        
+        # Get the state dict
+        if isinstance(checkpoint, dict):
+            if 'state_dict' in checkpoint:
+                state_dict = checkpoint['state_dict']
+            elif 'model_state_dict' in checkpoint:
+                state_dict = checkpoint['model_state_dict']
+            else:
+                state_dict = checkpoint
+        else:
+            state_dict = checkpoint
+            
+        # Filter out unexpected keys
+        model_state_dict = model.state_dict()
+        filtered_state_dict = {k: v for k, v in state_dict.items() 
+                             if k in model_state_dict and 
+                             v.shape == model_state_dict[k].shape}
+        
+        # Load filtered state dict
+        model.load_state_dict(filtered_state_dict, strict=False)
+        
+        # Print loading statistics
+        missing_keys = set(model_state_dict.keys()) - set(filtered_state_dict.keys())
+        unexpected_keys = set(state_dict.keys()) - set(model_state_dict.keys())
+        if missing_keys:
+            print(f"Missing keys: {missing_keys}")
+        if unexpected_keys:
+            print(f"Unexpected keys: {unexpected_keys}")
+            
+        return model
+    except Exception as e:
+        print(f"Error loading weights from {checkpoint_path}: {str(e)}")
+        return None

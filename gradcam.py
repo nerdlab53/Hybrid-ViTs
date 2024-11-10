@@ -7,6 +7,7 @@ from PIL import Image
 from torchvision import transforms
 import os
 import torch.nn.functional as F
+import math
 
 # Import all model classes
 from models.resnet import ResNet50_for_Alzheimer
@@ -28,10 +29,16 @@ class GradCAM:
         
         # Register hooks
         def forward_hook(module, input, output):
-            self.activations = output.detach()
+            if isinstance(output, tuple):
+                self.activations = output[0].detach()
+            else:
+                self.activations = output.detach()
             
         def backward_hook(module, grad_input, grad_output):
-            self.gradients = grad_output[0].detach()
+            if isinstance(grad_output, tuple):
+                self.gradients = grad_output[0].detach()
+            else:
+                self.gradients = grad_output[0].detach()
         
         # Register hooks based on model type
         target = self._get_target_layer_custom(model)
@@ -41,21 +48,15 @@ class GradCAM:
     
     def _get_target_layer_custom(self, model):
         """Get the target layer based on model architecture."""
-        if hasattr(model, 'resnet'):
-            return model.resnet.layer4[-1]
-        elif hasattr(model, 'vgg'):
-            return model.vgg.features[-1]
-        elif hasattr(model, 'densenet'):
-            return model.densenet.features.denseblock4
-        elif hasattr(model, 'efficientnet'):
-            return model.efficientnet.features[-1]
-        elif hasattr(model, 'mobilenet'):
-            return model.mobilenet.features[-1]
-        elif hasattr(model, 'backbone'):  # For ViT models
+        if hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                return model.backbone.blocks[-1]  # Return the entire last block
+                return model.backbone.blocks[-1]
+            elif hasattr(model.backbone, 'stages'):
+                return model.backbone.stages[-1][-1]
             elif hasattr(model.backbone, 'layers'):
                 return model.backbone.layers[-1]
+        elif hasattr(model, 'inception'):
+            return model.inception
         return None
 
     def generate_cam(self, input_image, target_class=None):
