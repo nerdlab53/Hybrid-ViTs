@@ -39,20 +39,50 @@ class GradCAM:
     def _get_target_layer_custom(self, model):
         """Get target layer based on CNN architecture."""
         if isinstance(model, ResNet50_for_Alzheimer):
-            # For ResNet
-            return model.model.layer4[-1].conv3
+            # Try different possible attributes
+            if hasattr(model, 'layer4'):
+                return model.layer4[-1].conv3
+            elif hasattr(model, 'resnet'):
+                return model.resnet.layer4[-1].conv3
+            elif hasattr(model, 'backbone'):
+                return model.backbone.layer4[-1].conv3
+                
         elif isinstance(model, VGG_for_Alzheimer):
-            # For VGG
-            return model.model.features[-1]
+            if hasattr(model, 'features'):
+                return model.features[-1]
+            elif hasattr(model, 'vgg'):
+                return model.vgg.features[-1]
+            elif hasattr(model, 'backbone'):
+                return model.backbone.features[-1]
+                
         elif isinstance(model, DenseNet_for_Alzheimer):
-            # For DenseNet
-            return model.model.features.denseblock4.denselayer16.conv2
+            if hasattr(model, 'features'):
+                return model.features.denseblock4.denselayer16.conv2
+            elif hasattr(model, 'densenet'):
+                return model.densenet.features.denseblock4.denselayer16.conv2
+            elif hasattr(model, 'backbone'):
+                return model.backbone.features.denseblock4.denselayer16.conv2
+                
         elif isinstance(model, EfficientNet_for_Alzheimer):
-            # For EfficientNet
-            return model.model.features[-1]
+            if hasattr(model, 'features'):
+                return model.features[-1]
+            elif hasattr(model, 'efficientnet'):
+                return model.efficientnet.features[-1]
+            elif hasattr(model, 'backbone'):
+                return model.backbone.features[-1]
+                
         elif isinstance(model, MobileNet_for_Alzheimer):
-            # For MobileNet
-            return model.model.features[-1]
+            if hasattr(model, 'features'):
+                return model.features[-1]
+            elif hasattr(model, 'mobilenet'):
+                return model.mobilenet.features[-1]
+            elif hasattr(model, 'backbone'):
+                return model.backbone.features[-1]
+                
+        print(f"Available attributes for {type(model).__name__}:")
+        for attr in dir(model):
+            if not attr.startswith('_'):
+                print(f"- {attr}")
         return None
 
     def generate_cam(self, input_image, target_class=None):
