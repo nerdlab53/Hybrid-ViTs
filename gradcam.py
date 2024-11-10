@@ -28,83 +28,72 @@ class GradCAM:
         self.activations = None
         
         def forward_hook(module, input, output):
-            if isinstance(output, dict):
-                # Handle timm's output format
-                self.activations = output['x'].detach()
-            elif isinstance(output, tuple):
-                self.activations = output[0].detach()
-            else:
-                self.activations = output.detach()
+            print(f"Forward hook called. Output shape: {output.shape}")
+            self.activations = output.detach()
             
         def backward_hook(module, grad_input, grad_output):
-            if isinstance(grad_output, tuple):
-                self.gradients = grad_output[0].detach()
-            else:
-                self.gradients = grad_output.detach()
+            print(f"Backward hook called. Grad output shape: {grad_output[0].shape}")
+            self.gradients = grad_output[0].detach()
         
         # Get target layer based on model architecture
         target = self._get_target_layer_custom(model)
         if target is not None:
+            print(f"Target layer found: {target.__class__.__name__}")
             target.register_forward_hook(forward_hook)
             target.register_full_backward_hook(backward_hook)
     
     def _get_target_layer_custom(self, model):
         """Get target layer based on model architecture."""
-        if hasattr(model, 'resnet'):
-            return model.resnet.layer4[-1]
-        elif hasattr(model, 'vgg'):
-            return model.vgg.features[-1]
-        elif hasattr(model, 'densenet'):
-            return model.densenet.features.denseblock4
-        elif hasattr(model, 'efficientnet'):
-            return model.efficientnet.features[-1]
-        elif hasattr(model, 'mobilenet'):
-            return model.mobilenet.features[-1]
-        elif hasattr(model, 'backbone'):
+        if hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                # For DeiT models from timm
-                return model.backbone.blocks[-1].mlp
-            elif hasattr(model.backbone, 'stages'):
-                # For ConvNeXt
-                return model.backbone.stages[-1][-1]
+                # For DeiT, use the output of the last block's attention
+                return model.backbone.blocks[-1].attn.proj
         return None
 
     def reshape_transform(self, tensor):
         """Reshape transform for transformer outputs."""
-        if len(tensor.shape) == 3:  # [B, N, C]
-            # Remove CLS token and reshape to square
-            tensor = tensor[:, 1:]  # Remove CLS token
-            size = int(math.sqrt(tensor.shape[1]))
-            tensor = tensor.reshape(tensor.shape[0], size, size, -1)
-            # Change to [B, C, H, W] format
-            tensor = tensor.permute(0, 3, 1, 2)
-        return tensor
+        result = tensor
+        
+        if len(tensor.shape) == 3:
+            # [B, N, C] -> [B, C, N]
+            result = result.transpose(1, 2)
+            # [B, C, N] -> [B, C, H, W]
+            size = int(math.sqrt(result.size(2)))
+            result = result.reshape(result.size(0), result.size(1), size, size)
+            
+        print(f"Reshaped tensor from {tensor.shape} to {result.shape}")
+        return result
 
     def generate_cam(self, input_image, target_class=None):
+        print("\nGenerating CAM...")
         self.model.eval()
         
         # Forward pass
         with torch.enable_grad():
+            print("Forward pass...")
             output = self.model(input_image)
+            print(f"Model output shape: {output.shape}")
+            
             if target_class is None:
                 target_class = torch.argmax(output)
+            print(f"Target class: {target_class}")
             
             self.model.zero_grad()
             output[0, target_class].backward()
 
         if self.gradients is None or self.activations is None:
             print("Warning: No gradients or activations found")
+            print(f"Gradients: {self.gradients}")
+            print(f"Activations: {self.activations}")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
 
-        # Transform the tensors
+        print("Processing gradients and activations...")
         gradients = self.reshape_transform(self.gradients)
         activations = self.reshape_transform(self.activations)
         
-        # Weight the channels by gradient
         weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
         cam = torch.sum(weights * activations, dim=1, keepdim=True)
         
-        # ReLU and normalize
         cam = F.relu(cam)
         cam = F.interpolate(cam, size=input_image.shape[2:], 
                           mode='bilinear', align_corners=False)
