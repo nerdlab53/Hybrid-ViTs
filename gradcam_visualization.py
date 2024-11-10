@@ -14,47 +14,38 @@ class GradCAM:
         self.activations = None
         
         def forward_hook(module, input, output):
-            self.activations = output
+            print(f"Forward hook called. Output shape: {output.shape}")
+            self.activations = output.detach()
             
         def backward_hook(module, grad_input, grad_output):
-            self.gradients = grad_output[0]
+            print(f"Backward hook called. Grad output shape: {grad_output[0].shape}")
+            self.gradients = grad_output[0].detach()
         
         # Get target layer based on model architecture
         if hasattr(model, 'backbone'):
-            # For DeiT models, use the last block's output
             if hasattr(model.backbone, 'blocks'):
-                target = model.backbone.blocks[-1]
-                if target is not None:
-                    print(f"Target layer found: {target.__class__.__name__}")
-                    target.register_forward_hook(forward_hook)
-                    target.register_full_backward_hook(backward_hook)
-            # For ConvNeXt models
-            elif hasattr(model.backbone, 'stages'):
-                target = model.backbone.stages[-1]
+                # For DeiT models, use the last block's norm1
+                target = model.backbone.blocks[-1].norm1
                 if target is not None:
                     print(f"Target layer found: {target.__class__.__name__}")
                     target.register_forward_hook(forward_hook)
                     target.register_full_backward_hook(backward_hook)
 
     def reshape_transform(self, tensor):
-        if len(tensor.shape) == 3:  # [B, N, C] for ViT
-            # Remove CLS token if present
-            if tensor.shape[1] > 196:  # 14x14 patches = 196
-                tensor = tensor[:, 1:, :]
+        """Reshape transform for transformer outputs."""
+        if len(tensor.shape) == 3:  # [B, N, C]
+            # Remove CLS token and reshape
+            result = tensor[:, 1:, :]  # Remove CLS token, now [B, 196, C]
             
-            # Calculate size of feature map (sqrt of number of patches)
-            n = tensor.shape[1]
-            size = int(math.sqrt(n))
-            
-            # Reshape to [B, H, W, C]
-            tensor = tensor.reshape(tensor.shape[0], size, size, -1)
+            # Reshape to square feature map
+            size = int(math.sqrt(result.size(1)))  # sqrt(196) = 14
+            result = result.reshape(result.size(0), size, size, result.size(2))
             
             # Permute to [B, C, H, W]
-            tensor = tensor.permute(0, 3, 1, 2)
+            result = result.permute(0, 3, 1, 2)
             
-            return tensor
-        elif len(tensor.shape) == 4:  # [B, C, H, W] for ConvNeXt
-            return tensor
+            print(f"Reshaped tensor from {tensor.shape} to {result.shape}")
+            return result
         return tensor
 
     def generate_cam(self, input_image, target_class=None):
