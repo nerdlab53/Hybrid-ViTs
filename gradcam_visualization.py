@@ -180,14 +180,14 @@ def visualize_gradcam(image_path, model, save_path=None):
 # Example usage
 if __name__ == "__main__":
     # Import model and utilities
-    from models.TinyViT_DeiT import TinyViT_DeiT
+    from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
     from utils.checkpoints import load_model_weights
     
     # Initialize model
-    model = TinyViT_DeiT().to('cuda')
+    model = TinyViT_DeiT_with_Inception().to('cuda')
     
     # Load weights using the robust loader
-    model = load_model_weights(model, 'Model Weights/tiny_vit_deit/checkpoint_best.pth', 'cuda')
+    model = load_model_weights(model, 'Model Weights/tiny_vit_deit_with_inception/checkpoint_best.pth', 'cuda')
     if model is None:
         print("Failed to load model weights!")
         exit()
