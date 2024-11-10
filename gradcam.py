@@ -181,7 +181,7 @@ def analyze_models(models_dir, image_path, output_dir):
         model = model_class()
         model = model.to(device)
         
-        checkpoint_path = Path(models_dir) / model_name / "best_model.pth"
+        checkpoint_path = Path(models_dir) / model_name / "checkpoint_best.pth"
         if checkpoint_path.exists():
             model = load_model_weights(model, checkpoint_path, device)
             if model is None:
