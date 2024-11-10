@@ -11,7 +11,7 @@ class TinyViT_DeiT_with_ModifiedInception(PretrainedTinyViTBase):
         patch_size=16,
         num_classes=4,
         dropout=0.1,
-        freeze_backbone=True
+        freeze_backbone=False
     ):
         # First initialize the base class to load pretrained weights
         super().__init__(

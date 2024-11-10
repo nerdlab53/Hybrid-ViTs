@@ -11,7 +11,7 @@ class TinyViT_DeiT_with_Inception(PretrainedTinyViTBase):
         patch_size=16,
         num_classes=4,
         dropout=0.1,
-        freeze_backbone=True
+        freeze_backbone=False
     ):
         super().__init__(
             pretrained_model_name='deit_tiny_patch16_224',
