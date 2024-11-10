@@ -1,15 +1,9 @@
-# Model Weights directory
 Model Weights/
 Model_Weights/
 model_weights/
-
-# Plots directory
 plots/
 Plots/
-
-# Python cache files
 __pycache__/
 *.py[cod]
 *$py.class
-
-CNN_Benchmarking.ipynb
+notebooks/
