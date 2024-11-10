@@ -154,6 +154,18 @@ def apply_gradcam(model, input_tensor, original_image, save_path):
     
     return cam
 
+model_classes = {
+    'resnet': ResNet50_for_Alzheimer,
+    'vgg16': VGG_for_Alzheimer,
+    'densenet121': DenseNet_for_Alzheimer,
+    'efficientnet': EfficientNet_for_Alzheimer,
+    'mobilenetv2': MobileNet_for_Alzheimer,
+    'tiny_vit_deit': TinyViT_DeiT,
+    'tiny_vit_convnext': TinyViT_ConvNeXt,
+    'tiny_vit_deit_with_inception': TinyViT_DeiT_with_Inception,
+    'tiny_vit_deit_with_modified_inception': TinyViT_DeiT_with_ModifiedInception
+}
+
 def analyze_models(models_dir, image_path, output_dir):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     os.makedirs(output_dir, exist_ok=True)
