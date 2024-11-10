@@ -39,16 +39,24 @@ class GradCAM:
             else:
                 self.gradients = grad_output[0].detach()
         
-        # Register hooks based on model architecture
+        # Get target layer based on model architecture
         target = self._get_target_layer_custom(model)
         if target is not None:
             target.register_forward_hook(forward_hook)
             target.register_full_backward_hook(backward_hook)
     
     def _get_target_layer_custom(self, model):
-        """Get the target layer based on model architecture."""
-        # For standard CNN models
-        if hasattr(model, 'resnet'):
+        if hasattr(model, 'backbone'):
+            if hasattr(model.backbone, 'blocks'):
+                # For ViT models, use the output of the last block
+                return model.backbone.blocks[-1]
+            elif hasattr(model.backbone, 'stages'):
+                return model.backbone.stages[-1]
+        elif hasattr(model, 'inception'):
+            # For hybrid models, use the inception module
+            return model.inception
+        # For CNN models
+        elif hasattr(model, 'resnet'):
             return model.resnet.layer4[-1]
         elif hasattr(model, 'vgg'):
             return model.vgg.features[-1]
@@ -58,19 +66,17 @@ class GradCAM:
             return model.efficientnet.features[-1]
         elif hasattr(model, 'mobilenet'):
             return model.mobilenet.features[-1]
-        # For transformer and hybrid models
-        elif hasattr(model, 'backbone'):
-            if hasattr(model.backbone, 'blocks'):
-                # For ViT models, use the last attention block
-                return model.backbone.blocks[-1].attn
-            elif hasattr(model.backbone, 'stages'):
-                try:
-                    return model.backbone.stages[-1][-1]
-                except:
-                    return model.backbone.stages[-1]
-        elif hasattr(model, 'inception'):
-            return model.inception
         return None
+
+    def reshape_transform(self, tensor):
+        if len(tensor.shape) == 3:
+            # For transformer output: [B, N, C] -> [B, C, H, W]
+            result = tensor[:, 1:, :]  # Remove CLS token
+            size = int(math.sqrt(result.shape[1]))
+            result = result.reshape(result.shape[0], size, size, result.shape[-1])
+            result = result.permute(0, 3, 1, 2)
+            return result
+        return tensor
 
     def generate_cam(self, input_image, target_class=None):
         self.model.eval()
@@ -82,10 +88,8 @@ class GradCAM:
             if target_class is None:
                 target_class = torch.argmax(model_output)
             
-            # Zero gradients
             self.model.zero_grad()
             
-            # Backward pass
             one_hot = torch.zeros_like(model_output)
             one_hot[0, target_class] = 1
             model_output.backward(gradient=one_hot, retain_graph=True)
@@ -94,36 +98,21 @@ class GradCAM:
             print("Warning: No gradients or activations found")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
         
-        # Handle different architectures
-        if len(self.gradients.shape) == 4:  # CNN-like output
-            weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)
-            cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
-        else:  # Transformer or hybrid output
-            if len(self.gradients.shape) == 3:  # [B, N, C] for attention
-                weights = torch.mean(self.gradients, dim=1)  # [B, C]
-                if len(self.activations.shape) == 3:  # [B, N, C]
-                    # For attention maps
-                    cam = torch.einsum('bc,bnc->bn', weights, self.activations)
-                    # Remove CLS token if present
-                    if cam.shape[1] > 1:  # Has CLS token
-                        cam = cam[:, 1:]  # Remove CLS token
-                    size = int(math.sqrt(cam.shape[1]))
-                    cam = cam.reshape(-1, size, size).unsqueeze(1)
-                else:  # [B, C, H, W] for hybrid features
-                    cam = torch.einsum('bc,bchw->bhw', weights, self.activations)
-                    cam = cam.unsqueeze(1)
-            else:
-                weights = torch.mean(self.gradients, dim=1, keepdim=True)
-                cam = torch.matmul(self.activations, weights.transpose(-1, -2))
+        # Transform activations if needed
+        activations = self.reshape_transform(self.activations)
+        gradients = self.reshape_transform(self.gradients)
         
-        # Ensure positive values and normalize
+        # Calculate weights and CAM
+        weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
+        cam = torch.sum(weights * activations, dim=1, keepdim=True)
+        
         cam = F.relu(cam)
         if cam.sum() == 0:
             print("Warning: CAM is all zeros")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
         
         cam = F.interpolate(cam, size=input_image.shape[2:], 
-                           mode='bilinear', align_corners=False)
+                          mode='bilinear', align_corners=False)
         cam = cam - cam.min()
         cam = cam / (cam.max() + 1e-8)
         
