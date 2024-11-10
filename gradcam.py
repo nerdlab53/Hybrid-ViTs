@@ -39,15 +39,20 @@ class GradCAM:
     def _get_target_layer_custom(self, model):
         """Get target layer based on CNN architecture."""
         if isinstance(model, ResNet50_for_Alzheimer):
-            return model.layer4[-1].conv3
+            # For ResNet, get the last conv layer from the base model
+            return model.base_model.layer4[-1].conv3
         elif isinstance(model, VGG_for_Alzheimer):
-            return model.features[-1]
+            # For VGG, get the last conv layer from the base model
+            return model.base_model.features[-1]
         elif isinstance(model, DenseNet_for_Alzheimer):
-            return model.features.denseblock4.denselayer16.conv2
+            # For DenseNet, get the last conv layer from the base model
+            return model.base_model.features.denseblock4.denselayer16.conv2
         elif isinstance(model, EfficientNet_for_Alzheimer):
-            return model._blocks[-1]._project_conv
+            # For EfficientNet, get the last conv layer from the base model
+            return model.base_model.features[-1]
         elif isinstance(model, MobileNet_for_Alzheimer):
-            return model.features[-1]
+            # For MobileNet, get the last conv layer from the base model
+            return model.base_model.features[-1]
         return None
 
     def generate_cam(self, input_image, target_class=None):
@@ -143,6 +148,41 @@ def create_comparative_plot(results, output_dir):
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, 'comparative_analysis.png'))
+    plt.close()
+
+def visualize_results(original_image, cam, save_path):
+    """Visualize the GradCAM results."""
+    # Convert original image to numpy array
+    orig_img = np.array(original_image)
+    
+    # Resize CAM to match original image size
+    cam_resized = cv2.resize(cam, (orig_img.shape[1], orig_img.shape[0]))
+    
+    # Create heatmap
+    heatmap = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
+    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+    
+    # Combine original image with heatmap
+    alpha = 0.5
+    superimposed = cv2.addWeighted(orig_img, 1-alpha, heatmap, alpha, 0)
+    
+    # Create visualization
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+    
+    ax1.imshow(orig_img)
+    ax1.set_title('Original Image')
+    ax1.axis('off')
+    
+    ax2.imshow(heatmap)
+    ax2.set_title('GradCAM Heatmap')
+    ax2.axis('off')
+    
+    ax3.imshow(superimposed)
+    ax3.set_title('Superimposed')
+    ax3.axis('off')
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
 
 def analyze_cnn_models(models_dir, image_path, output_dir):
