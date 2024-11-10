@@ -8,5 +8,5 @@ __pycache__/
 *$py.class
 notebooks/
 pytorch-grad-cam/
-ViT_Hybrid_ViTs_GradCAM/
+vits_gradcam/
 gradcam_analysis/
