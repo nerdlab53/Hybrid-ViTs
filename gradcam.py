@@ -46,28 +46,29 @@ class GradCAM:
             target.register_full_backward_hook(backward_hook)
     
     def _get_target_layer_custom(self, model):
+        """Get target layer based on model architecture."""
         if hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                # For ViT models, use the attention layer of the last block
-                return model.backbone.blocks[-1].attn.qkv
+                # For DeiT models
+                return model.backbone.blocks[-1].norm1
             elif hasattr(model.backbone, 'stages'):
-                return model.backbone.stages[-1]
+                # For ConvNeXt
+                return model.backbone.stages[-1][-1].block[-1]
         elif hasattr(model, 'inception'):
+            # For hybrid models with inception
             return model.inception
         return None
 
     def reshape_transform(self, tensor):
-        if len(tensor.shape) == 3:  # [B, N, 3*C]
-            # For ViT QKV output
+        """Transform tensor based on architecture."""
+        if len(tensor.shape) == 3:  # [B, N, C]
             B, N, C = tensor.shape
-            C = C // 3  # Split into q, k, v
-            tensor = tensor.reshape(B, N, 3, C).permute(0, 2, 1, 3)
-            # Use only the key path for attention visualization
-            tensor = tensor[:, 1]  # [B, N, C]
             if N > 1:  # Has CLS token
                 tensor = tensor[:, 1:]  # Remove CLS token
-            size = int(math.sqrt(tensor.shape[1]))
-            tensor = tensor.reshape(B, size, size, -1).permute(0, 3, 1, 2)
+            
+            H = W = int(math.sqrt(tensor.shape[1]))
+            tensor = tensor.reshape(B, H, W, C)
+            tensor = tensor.permute(0, 3, 1, 2)
             return tensor
         return tensor
 
@@ -99,6 +100,7 @@ class GradCAM:
         weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
         cam = torch.sum(weights * activations, dim=1, keepdim=True)
         
+        # Post-process CAM
         cam = F.relu(cam)
         if cam.sum() == 0:
             print("Warning: CAM is all zeros")
