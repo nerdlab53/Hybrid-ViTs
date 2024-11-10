@@ -179,19 +179,31 @@ def visualize_gradcam(image_path, model, save_path=None):
 
 # Example usage
 if __name__ == "__main__":
-    # Load your model
-    from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
+    # Import all model variants
+    from models.TinyViT_DeiT import TinyViT_DeiT
+    from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
+    from models.TinyViT_ConvNeXt import TinyViT_ConvNeXt
     
-    # Initialize model
-    model = TinyViT_DeiT_with_ModifiedInception().to('cuda')
-    
-    # Load weights
-    checkpoint = torch.load('Model Weights/tiny_vit_deit_with_modified_inception/checkpoint_best.pth')
-    # The checkpoint contains training metadata - we need the 'state_dict' key
-    model.load_state_dict(checkpoint['state_dict'])
+    # List of models to analyze
+    models_to_analyze = [
+        ('TinyViT_DeiT', TinyViT_DeiT()),
+        ('TinyViT_DeiT_with_Inception', TinyViT_DeiT_with_Inception()),
+        ('TinyViT_ConvNeXt', TinyViT_ConvNeXt())
+    ]
     
     # Path to your image
     image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
     
-    # Visualize GradCAM
-    visualize_gradcam(image_path, model, save_path="gradcam_output.png")
+    # Analyze each model
+    for model_name, model in models_to_analyze:
+        print(f"\nAnalyzing {model_name}...")
+        
+        # Initialize model and move to GPU
+        model = model.to('cuda')
+        
+        # Load weights
+        checkpoint = torch.load(f'Model Weights/{model_name.lower()}/checkpoint_best.pth')
+        model.load_state_dict(checkpoint['state_dict'])
+        
+        # Visualize GradCAM
+        visualize_gradcam(image_path, model, save_path=f"gradcam_output_{model_name}.png")
