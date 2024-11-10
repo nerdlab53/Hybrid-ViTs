@@ -47,7 +47,7 @@ class GradCAM:
         if hasattr(model.backbone, 'blocks'):
             return model.backbone.blocks[-1].norm1  # Last transformer block
         elif hasattr(model.backbone, 'stages'):
-            return model.backbone.stages[-1][-1]  # Last stage, last block
+            return model.backbone.stages[-1].blocks[-1]  # Last stage, last block
         return model.backbone.head  # Fallback
     
     def _get_target_layer_custom(self, model):
