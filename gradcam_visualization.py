@@ -179,30 +179,45 @@ def visualize_gradcam(image_path, model, save_path=None):
 
 # Example usage
 if __name__ == "__main__":
-    # Import all model variants
+    # Load your model
+    from models.TinyViT_DeiT_with_ModifiedInception import TinyViT_DeiT_with_ModifiedInception
     from models.TinyViT_DeiT import TinyViT_DeiT
     from models.TinyViT_DeiT_with_Inception import TinyViT_DeiT_with_Inception
     from models.TinyViT_ConvNeXt import TinyViT_ConvNeXt
     
-    # List of models to analyze
-    models_to_analyze = [
-        ('TinyViT_DeiT', TinyViT_DeiT()),
-        ('TinyViT_DeiT_with_Inception', TinyViT_DeiT_with_Inception()),
-        ('TinyViT_ConvNeXt', TinyViT_ConvNeXt())
+    
+    # # Initialize model
+    # model = TinyViT_DeiT_with_ModifiedInception().to('cuda')
+    
+    # # Load weights
+    # checkpoint = torch.load('Model Weights/tiny_vit_deit_with_modified_inception/checkpoint_best.pth')
+    # # The checkpoint contains training metadata - we need the 'state_dict' key
+    # model.load_state_dict(checkpoint['state_dict'])
+    
+    # # Path to your image
+    # image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
+    
+    # # Visualize GradCAM
+    # visualize_gradcam(image_path, model, save_path="gradcam_output.png")
+    models_config = [
+        (TinyViT_DeiT(), 'Model Weights/tiny_vit_deit/checkpoint_best.pth'),
+        (TinyViT_DeiT_with_Inception(), 'Model Weights/tiny_vit_deit_with_inception/checkpoint_best.pth'),
+        (TinyViT_ConvNeXt(), 'Model Weights/tiny_vit_convnext/checkpoint_best.pth')
     ]
     
     # Path to your image
     image_path = "/teamspace/studios/this_studio/augmented-alzheimer-mri-dataset/AugmentedAlzheimerDataset/MildDemented/0a0a0acd-8bd8-4b79-b724-cc5711e83bc7.jpg"
     
-    # Analyze each model
-    for model_name, model in models_to_analyze:
-        print(f"\nAnalyzing {model_name}...")
+    # Process each model
+    for model, checkpoint_path in models_config:
+        model_name = model.__class__.__name__
+        print(f"\nProcessing {model_name}...")
         
-        # Initialize model and move to GPU
+        # Move model to GPU
         model = model.to('cuda')
         
         # Load weights
-        checkpoint = torch.load(f'Model Weights/{model_name.lower()}/checkpoint_best.pth')
+        checkpoint = torch.load(checkpoint_path)
         model.load_state_dict(checkpoint['state_dict'])
         
         # Visualize GradCAM
