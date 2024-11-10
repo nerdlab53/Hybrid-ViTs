@@ -61,11 +61,11 @@ class GradCAM:
         # For transformer and hybrid models
         elif hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                # For DeiT and hybrid models, use the last transformer block
-                return model.backbone.blocks[-1]
-        elif hasattr(model, 'transformer_blocks'):
-            # For base TinyViT
-            return model.transformer_blocks[-1]
+                # For DeiT models (from timm)
+                return model.backbone.blocks[-1].norm1
+            elif hasattr(model.backbone, 'stages'):
+                # For ConvNeXt
+                return model.backbone.stages[-1][-1]
         return None
 
     def reshape_transform(self, tensor):
