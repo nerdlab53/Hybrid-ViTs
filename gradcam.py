@@ -27,7 +27,6 @@ class GradCAM:
         self.gradients = None
         self.activations = None
         
-        # Register hooks
         def forward_hook(module, input, output):
             if isinstance(output, tuple):
                 self.activations = output[0].detach()
@@ -40,26 +39,42 @@ class GradCAM:
             else:
                 self.gradients = grad_output[0].detach()
         
-        # Register hooks based on model type
+        # Get target layer based on model architecture
         target = self._get_target_layer_custom(model)
         if target is not None:
             target.register_forward_hook(forward_hook)
-            target.register_full_backward_hook(backward_hook)  # Using full_backward_hook instead
+            target.register_full_backward_hook(backward_hook)
     
     def _get_target_layer_custom(self, model):
         """Get the target layer based on model architecture."""
-        if hasattr(model, 'backbone'):
+        # For standard CNN models
+        if hasattr(model, 'resnet'):
+            return model.resnet.layer4[-1]
+        elif hasattr(model, 'vgg'):
+            return model.vgg.features[-1]
+        elif hasattr(model, 'densenet'):
+            return model.densenet.features.denseblock4
+        elif hasattr(model, 'efficientnet'):
+            return model.efficientnet.features[-1]
+        elif hasattr(model, 'mobilenet'):
+            return model.mobilenet.features[-1]
+        # For transformer and inception models
+        elif hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
                 return model.backbone.blocks[-1]
             elif hasattr(model.backbone, 'stages'):
-                return model.backbone.stages[-1][-1]
-            elif hasattr(model.backbone, 'layers'):
-                return model.backbone.layers[-1]
+                try:
+                    return model.backbone.stages[-1]
+                except:
+                    return model.backbone.stages
         elif hasattr(model, 'inception'):
             return model.inception
         return None
 
     def generate_cam(self, input_image, target_class=None):
+        # Ensure model is in eval mode
+        self.model.eval()
+        
         # Forward pass
         model_output = self.model(input_image)
         
@@ -70,37 +85,37 @@ class GradCAM:
         self.model.zero_grad()
         
         # Backward pass
-        model_output[0, target_class].backward()
+        one_hot = torch.zeros_like(model_output)
+        one_hot[0, target_class] = 1
+        model_output.backward(gradient=one_hot, retain_graph=True)
         
-        # Handle transformer models differently
-        if hasattr(self.model, 'backbone') and hasattr(self.model.backbone, 'blocks'):
-            # For transformer models, use attention weights directly
-            gradients = self.gradients
-            activations = self.activations
-            
-            # Reshape if needed
-            if len(gradients.shape) == 3:
-                gradients = gradients.unsqueeze(0)
-            if len(activations.shape) == 3:
-                activations = activations.unsqueeze(0)
-            
-            # Calculate attention weights
-            weights = gradients.mean(1).unsqueeze(1)
-            cam = torch.matmul(weights, activations)
-        else:
-            # Traditional CNN approach
-            gradients = self.gradients.mean((2, 3), keepdim=True)
-            activations = self.activations
-            weights = F.adaptive_avg_pool2d(gradients, 1)
-            cam = torch.sum(weights * activations, dim=1, keepdim=True)
+        if self.gradients is None or self.activations is None:
+            print("Warning: No gradients or activations found")
+            return None
+        
+        # Handle different model architectures
+        if len(self.gradients.shape) == 4:  # CNN-like output [B, C, H, W]
+            weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)
+            cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
+        else:  # Transformer or inception output
+            if len(self.gradients.shape) == 3:  # [B, N, C]
+                weights = torch.mean(self.gradients, dim=1)
+                cam = torch.matmul(weights.unsqueeze(1), 
+                                 self.activations.transpose(-1, -2))
+                size = int(math.sqrt(cam.shape[-1]))
+                cam = cam.reshape(-1, 1, size, size)
+            else:
+                weights = torch.mean(self.gradients, dim=1, keepdim=True)
+                cam = torch.matmul(weights, self.activations)
         
         # ReLU and normalize
         cam = F.relu(cam)
-        cam = F.interpolate(cam, size=input_image.shape[2:], mode='bilinear', align_corners=False)
+        cam = F.interpolate(cam, size=input_image.shape[2:], 
+                          mode='bilinear', align_corners=False)
         cam = cam - cam.min()
         cam = cam / (cam.max() + 1e-8)
         
-        return cam.detach().cpu().numpy()[0, 0]
+        return cam.squeeze().cpu().numpy()
 
 def load_image(image_path, size=224):
     """Load and preprocess image for model input."""
