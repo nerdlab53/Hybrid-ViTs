@@ -7,6 +7,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 notebooks/
-pytorch-grad-cam/
+pytorch_gradcam/
 vits_gradcam/
 gradcam_analysis/
