@@ -28,7 +28,10 @@ class GradCAM:
         self.activations = None
         
         def forward_hook(module, input, output):
-            if isinstance(output, tuple):
+            if isinstance(output, dict):
+                # Handle timm's output format
+                self.activations = output['x'].detach()
+            elif isinstance(output, tuple):
                 self.activations = output[0].detach()
             else:
                 self.activations = output.detach()
@@ -37,7 +40,7 @@ class GradCAM:
             if isinstance(grad_output, tuple):
                 self.gradients = grad_output[0].detach()
             else:
-                self.gradients = grad_output[0].detach()
+                self.gradients = grad_output.detach()
         
         # Get target layer based on model architecture
         target = self._get_target_layer_custom(model)
@@ -47,7 +50,6 @@ class GradCAM:
     
     def _get_target_layer_custom(self, model):
         """Get target layer based on model architecture."""
-        # For CNN models
         if hasattr(model, 'resnet'):
             return model.resnet.layer4[-1]
         elif hasattr(model, 'vgg'):
@@ -58,73 +60,59 @@ class GradCAM:
             return model.efficientnet.features[-1]
         elif hasattr(model, 'mobilenet'):
             return model.mobilenet.features[-1]
-        # For transformer and hybrid models
         elif hasattr(model, 'backbone'):
-            print("has backbone")
             if hasattr(model.backbone, 'blocks'):
-                print("has blocks")
-                # For DeiT and hybrid models, target the attention module of last block
-                return model.backbone.blocks[-1].attn
-        print("no target layer found")
+                # For DeiT models from timm
+                return model.backbone.blocks[-1].mlp
+            elif hasattr(model.backbone, 'stages'):
+                # For ConvNeXt
+                return model.backbone.stages[-1][-1]
         return None
 
     def reshape_transform(self, tensor):
-        """Transform tensor based on architecture."""
+        """Reshape transform for transformer outputs."""
         if len(tensor.shape) == 3:  # [B, N, C]
-            # For transformer attention output
-            result = tensor
-            
-            # Remove CLS token if present
-            if tensor.size(1) > 1:
-                result = tensor[:, 1:]
-                
-            # Reshape to square feature map
-            size = int(math.sqrt(result.size(1)))
-            result = result.reshape(result.size(0), size, size, result.size(2))
-            # Rearrange to [B, C, H, W]
-            result = result.permute(0, 3, 1, 2)
-            return result
+            # Remove CLS token and reshape to square
+            tensor = tensor[:, 1:]  # Remove CLS token
+            size = int(math.sqrt(tensor.shape[1]))
+            tensor = tensor.reshape(tensor.shape[0], size, size, -1)
+            # Change to [B, C, H, W] format
+            tensor = tensor.permute(0, 3, 1, 2)
         return tensor
 
     def generate_cam(self, input_image, target_class=None):
         self.model.eval()
         
+        # Forward pass
         with torch.enable_grad():
-            model_output = self.model(input_image)
-            
+            output = self.model(input_image)
             if target_class is None:
-                target_class = torch.argmax(model_output)
+                target_class = torch.argmax(output)
             
             self.model.zero_grad()
-            
-            one_hot = torch.zeros_like(model_output)
-            one_hot[0, target_class] = 1
-            model_output.backward(gradient=one_hot, retain_graph=True)
-        
+            output[0, target_class].backward()
+
         if self.gradients is None or self.activations is None:
             print("Warning: No gradients or activations found")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
+
+        # Transform the tensors
+        gradients = self.reshape_transform(self.gradients)
+        activations = self.reshape_transform(self.activations)
         
-        # Handle tuple outputs from transformer blocks
-        gradients = self.gradients[0] if isinstance(self.gradients, tuple) else self.gradients
-        activations = self.activations[0] if isinstance(self.activations, tuple) else self.activations
-        
-        # Transform tensors
-        gradients = self.reshape_transform(gradients)
-        activations = self.reshape_transform(activations)
-        
-        # Calculate weights and CAM
+        # Weight the channels by gradient
         weights = torch.mean(gradients, dim=(2, 3), keepdim=True)
         cam = torch.sum(weights * activations, dim=1, keepdim=True)
         
-        # Post-process CAM
+        # ReLU and normalize
         cam = F.relu(cam)
+        cam = F.interpolate(cam, size=input_image.shape[2:], 
+                          mode='bilinear', align_corners=False)
+        
         if cam.sum() == 0:
             print("Warning: CAM is all zeros")
             return np.zeros((input_image.shape[2], input_image.shape[3]))
-        
-        cam = F.interpolate(cam, size=input_image.shape[2:], 
-                          mode='bilinear', align_corners=False)
+            
         cam = cam - cam.min()
         cam = cam / (cam.max() + 1e-8)
         
