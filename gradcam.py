@@ -39,76 +39,58 @@ class GradCAM:
             else:
                 self.gradients = grad_output[0].detach()
         
-        # Get target layer based on model architecture
+        # Register hooks based on model architecture
         target = self._get_target_layer_custom(model)
         if target is not None:
             target.register_forward_hook(forward_hook)
             target.register_full_backward_hook(backward_hook)
     
     def _get_target_layer_custom(self, model):
-        """Get the target layer based on model architecture."""
-        # For standard CNN models
-        if hasattr(model, 'resnet'):
-            return model.resnet.layer4[-1]
-        elif hasattr(model, 'vgg'):
-            return model.vgg.features[-1]
-        elif hasattr(model, 'densenet'):
-            return model.densenet.features.denseblock4
-        elif hasattr(model, 'efficientnet'):
-            return model.efficientnet.features[-1]
-        elif hasattr(model, 'mobilenet'):
-            return model.mobilenet.features[-1]
-        # For transformer and inception models
-        elif hasattr(model, 'backbone'):
+        if hasattr(model, 'backbone'):
             if hasattr(model.backbone, 'blocks'):
-                return model.backbone.blocks[-1]
+                return model.backbone.blocks[-1].mlp
             elif hasattr(model.backbone, 'stages'):
-                try:
-                    return model.backbone.stages[-1]
-                except:
-                    return model.backbone.stages
+                return model.backbone.stages[-1]
         elif hasattr(model, 'inception'):
             return model.inception
         return None
 
     def generate_cam(self, input_image, target_class=None):
-        # Ensure model is in eval mode
         self.model.eval()
         
         # Forward pass
-        model_output = self.model(input_image)
-        
-        if target_class is None:
-            target_class = torch.argmax(model_output)
-        
-        # Zero gradients
-        self.model.zero_grad()
-        
-        # Backward pass
-        one_hot = torch.zeros_like(model_output)
-        one_hot[0, target_class] = 1
-        model_output.backward(gradient=one_hot, retain_graph=True)
+        with torch.enable_grad():
+            model_output = self.model(input_image)
+            
+            if target_class is None:
+                target_class = torch.argmax(model_output)
+            
+            # Zero gradients
+            self.model.zero_grad()
+            
+            # Backward pass
+            one_hot = torch.zeros_like(model_output)
+            one_hot[0, target_class] = 1
+            model_output.backward(gradient=one_hot, retain_graph=True)
         
         if self.gradients is None or self.activations is None:
             print("Warning: No gradients or activations found")
-            return None
+            return np.zeros((input_image.shape[2], input_image.shape[3]))
         
-        # Handle different model architectures
-        if len(self.gradients.shape) == 4:  # CNN-like output [B, C, H, W]
+        # Handle different architectures
+        if len(self.gradients.shape) == 4:  # CNN-like output
             weights = torch.mean(self.gradients, dim=(2, 3), keepdim=True)
             cam = torch.sum(weights * self.activations, dim=1, keepdim=True)
         else:  # Transformer or inception output
             if len(self.gradients.shape) == 3:  # [B, N, C]
                 weights = torch.mean(self.gradients, dim=1)
-                cam = torch.matmul(weights.unsqueeze(1), 
-                                 self.activations.transpose(-1, -2))
-                size = int(math.sqrt(cam.shape[-1]))
-                cam = cam.reshape(-1, 1, size, size)
+                cam = torch.matmul(self.activations, weights.unsqueeze(-1))
+                size = int(math.sqrt(cam.shape[1]))
+                cam = cam.reshape(-1, size, size).unsqueeze(1)
             else:
                 weights = torch.mean(self.gradients, dim=1, keepdim=True)
-                cam = torch.matmul(weights, self.activations)
+                cam = torch.matmul(self.activations, weights.transpose(-1, -2))
         
-        # ReLU and normalize
         cam = F.relu(cam)
         cam = F.interpolate(cam, size=input_image.shape[2:], 
                           mode='bilinear', align_corners=False)
@@ -176,12 +158,22 @@ def apply_gradcam(model, input_tensor, original_image, save_path):
 def load_model_weights(model, checkpoint_path, device):
     try:
         checkpoint = torch.load(checkpoint_path, map_location=device)
-        if 'state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['state_dict'])
-        elif 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-        else:
-            model.load_state_dict(checkpoint)
+        state_dict = checkpoint.get('state_dict', checkpoint.get('model_state_dict', checkpoint))
+        
+        # Get the current model's state dict
+        model_state_dict = model.state_dict()
+        
+        # Filter and adjust the loaded state dict
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            if k in model_state_dict:
+                if v.shape == model_state_dict[k].shape:
+                    new_state_dict[k] = v
+                else:
+                    print(f"Shape mismatch for {k}: checkpoint {v.shape} vs model {model_state_dict[k].shape}")
+        
+        # Load filtered state dict
+        model.load_state_dict(new_state_dict, strict=False)
         return model
     except Exception as e:
         print(f"Error loading weights from {checkpoint_path}: {str(e)}")
