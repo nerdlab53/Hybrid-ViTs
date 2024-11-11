@@ -39,10 +39,33 @@ class ModelEvaluator:
     def load_model(self, model, checkpoint_path):
         try:
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
-            if 'state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['state_dict'])
+            state_dict = None
+            
+            # Get the state dict
+            if isinstance(checkpoint, dict):
+                if 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                elif 'model_state_dict' in checkpoint:
+                    state_dict = checkpoint['model_state_dict']
+                else:
+                    state_dict = checkpoint
             else:
-                model.load_state_dict(checkpoint)
+                state_dict = checkpoint
+                
+            # Filter out unexpected keys and handle size mismatches
+            model_state_dict = model.state_dict()
+            filtered_state_dict = {}
+            
+            for k, v in state_dict.items():
+                if k in model_state_dict:
+                    if v.shape == model_state_dict[k].shape:
+                        filtered_state_dict[k] = v
+                    else:
+                        print(f"Skipping parameter {k} due to shape mismatch: "
+                              f"checkpoint: {v.shape} vs model: {model_state_dict[k].shape}")
+            
+            # Load filtered state dict
+            model.load_state_dict(filtered_state_dict, strict=False)
             return model
         except Exception as e:
             print(f"Error loading model: {str(e)}")
@@ -179,16 +202,19 @@ def main():
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # Load test data with dataset_type parameter
-    _, _, test_loader = load_alzheimers_data(
+    # Load data with validation set as test set since we don't have a separate test set
+    train_loader, val_loader, _ = load_alzheimers_data(
         args.data_dir,
         batch_size=args.batch_size,
         num_workers=4,
-        dataset_type=args.dataset_type  # Add this parameter
+        dataset_type=args.dataset_type
     )
     
+    if val_loader is None:
+        raise ValueError("Failed to load validation/test data loader")
+    
     # Initialize evaluator and run evaluation
-    evaluator = ModelEvaluator(args.models_dir, test_loader, device, args.output_dir)
+    evaluator = ModelEvaluator(args.models_dir, val_loader, device, args.output_dir)
     results = evaluator.evaluate_all_models()
     
     # Print final summary
@@ -201,9 +227,6 @@ def main():
         print("\nPer-class Precision:")
         for i, p in enumerate(metrics['precision_per_class']):
             print(f"Class {i}: {p:.4f}")
-        print("\nPer-class Recall:")
-        for i, r in enumerate(metrics['recall_per_class']):
-            print(f"Class {i}: {r:.4f}")
 
 if __name__ == "__main__":
     main()
