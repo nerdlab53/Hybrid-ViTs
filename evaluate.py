@@ -92,9 +92,11 @@ class ModelEvaluator:
                 total += labels.size(0)
                 metrics['top1_correct'] += (predicted == labels).sum().item()
                 
-                # Top-5 accuracy
-                _, top5_preds = outputs.topk(5, 1, True, True)
-                metrics['top5_correct'] += (top5_preds == labels.view(-1, 1)).any(dim=1).sum().item()
+                # Top-k accuracy (k = min(5, num_classes))
+                num_classes = outputs.size(1)  # Get number of classes from output size
+                k = min(5, num_classes)  # Use either 5 or num_classes, whichever is smaller
+                _, topk_preds = outputs.topk(k, 1, True, True)
+                metrics['top5_correct'] += (topk_preds == labels.view(-1, 1)).any(dim=1).sum().item()
                 
                 # Store predictions and labels for later analysis
                 metrics['predictions'].extend(predicted.cpu().numpy())
@@ -104,7 +106,8 @@ class ModelEvaluator:
         results = {
             'model_name': model_name,
             'top1_accuracy': (metrics['top1_correct'] / total) * 100,
-            'top5_accuracy': (metrics['top5_correct'] / total) * 100
+            'top5_accuracy': (metrics['top5_correct'] / total) * 100,
+            'num_classes': num_classes
         }
         
         # Calculate precision, recall, and F1 score
