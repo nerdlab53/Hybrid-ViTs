@@ -109,12 +109,43 @@ class ModelEvaluator:
         for model_name, model in self.models.items():
             print(f"\nEvaluating {model_name}")
             
-            # Load model weights
-            checkpoint_path = self.models_dir / model_name / "best.pth"
-            if not checkpoint_path.exists():
-                print(f"No checkpoint found for {model_name}")
+            # Map model names to directory names
+            dir_name_map = {
+                'ResNet50': 'resnet',
+                'VGG16': 'vgg16',
+                'DenseNet121': 'densenet121',
+                'EfficientNet-B0': 'efficientnet',
+                'MobileNetV2': 'mobilenetv2',
+                'TinyViT_DeiT': 'tiny_vit_deit',
+                'TinyViT_ConvNeXt': 'tiny_vit_convnext',
+                'TinyViT_DeiT_with_Inception': 'tiny_vit_deit_with_inception',
+                'TinyViT_DeiT_with_ModifiedInception': 'tiny_vit_deit_with_modified_inception'
+            }
+            
+            # Get the correct directory name
+            dir_name = dir_name_map.get(model_name, model_name.lower())
+            
+            # Check for both possible checkpoint names
+            checkpoint_paths = [
+                self.models_dir / dir_name / "checkpoint_best.pth",
+                self.models_dir / dir_name / "best.pth",
+                self.models_dir / f"{dir_name}_weights" / "checkpoint_best.pth"
+            ]
+            
+            checkpoint_path = None
+            for path in checkpoint_paths:
+                if path.exists():
+                    checkpoint_path = path
+                    break
+                    
+            if checkpoint_path is None:
+                print(f"No checkpoint found for {model_name} in paths:")
+                for path in checkpoint_paths:
+                    print(f"- {path}")
                 continue
                 
+            print(f"Found checkpoint at: {checkpoint_path}")
+            
             model = self.load_model(model, checkpoint_path)
             if model is None:
                 continue
@@ -130,7 +161,7 @@ class ModelEvaluator:
         # Save all results
         with open(self.output_dir / 'evaluation_results.json', 'w') as f:
             json.dump(all_results, f, indent=4)
-            
+        
         return all_results
 
 def main():
