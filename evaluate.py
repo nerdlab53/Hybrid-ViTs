@@ -142,15 +142,18 @@ def main():
     parser.add_argument('--data_dir', type=str, required=True, help='Directory containing test data')
     parser.add_argument('--output_dir', type=str, default='evaluation_results', help='Directory to save results')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for evaluation')
+    parser.add_argument('--dataset_type', type=str, choices=['Original', 'Augmented'], 
+                       default='Original', help='Which dataset type to use')
     args = parser.parse_args()
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # Load test data
+    # Load test data with dataset_type parameter
     _, _, test_loader = load_alzheimers_data(
         args.data_dir,
         batch_size=args.batch_size,
-        num_workers=4
+        num_workers=4,
+        dataset_type=args.dataset_type  # Add this parameter
     )
     
     # Initialize evaluator and run evaluation
